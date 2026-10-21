@@ -32,4 +32,17 @@ const TCHAR* FCCCarMode::GetCode(EFCCCarMode Mode)
 	}
 }
 
+TOptional<EFCCCarMode> FCCCarMode::FromName(const FString& Name)
+{
+	const UEnum* Enum = StaticEnum<EFCCCarMode>();
+	for (int32 Index = 0; Index < static_cast<int32>(EFCCCarMode::Count); ++Index)
+	{
+		if (Name.Equals(Enum->GetNameStringByIndex(Index), ESearchCase::IgnoreCase))
+		{
+			return static_cast<EFCCCarMode>(Enum->GetValueByIndex(Index));
+		}
+	}
+	return {};
+}
+
 #undef LOCTEXT_NAMESPACE

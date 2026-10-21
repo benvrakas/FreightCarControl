@@ -115,36 +115,23 @@ EFCCCarMode FFCCDockingHook::ResolveMode(AFGBuildableTrainPlatformCargo* Platfor
 	// AFGTrain::GetDockingRuleSetForCurrentStop.
 	const int32 CurrentStop = TimeTable->GetCurrentStop();
 	const int32 StopIndex = (CurrentStop == 0 ? TimeTable->GetNumStops() : CurrentStop) - 1;
-	const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
-	const bool bLog = ShouldLogDecision(Platform, Vehicle, StopIndex);
-	if (StopIndex < 0)
-	{
-		return EFCCCarMode::Platform;
-	}
-	if (Stop.Station != Station->GetStationIdentifier() && bLog)
-	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s docked at %s for stop %d (%s); applying that stop's car rules, as the game does with its own stop rules"),
-			*Train->GetTrainName().ToString(), Station->GetStationIdentifier() ? *Station->GetStationIdentifier()->GetStationName().ToString() : TEXT("?"),
-			StopIndex + 1, Stop.Station ? *Stop.Station->GetStationName().ToString() : TEXT("none"));
-	}
-
 	const int32 CarIndex = AFCCRuleSubsystem::GetFreightCarIndex(Vehicle);
-	if (CarIndex == INDEX_NONE)
+	if (StopIndex < 0 || CarIndex == INDEX_NONE)
 	{
-		if (bLog)
-		{
-			UE_LOG(LogFreightCarControl, Warning, TEXT("%s: docked vehicle %s isn't a freight car of %s"),
-				*GetNameSafe(Platform), *GetNameSafe(Vehicle), *Train->GetTrainName().ToString());
-		}
+		UE_LOG(LogFreightCarControl, VeryVerbose, TEXT("%s: no stop (%d) or %s isn't a freight car"), *GetNameSafe(Platform), StopIndex, *GetNameSafe(Vehicle));
 		return EFCCCarMode::Platform;
 	}
 
 	const EFCCCarMode Mode = Rules->GetCarMode(TimeTable, StopIndex, CarIndex);
-	if (bLog)
+	if (ShouldLogDecision(Platform, Vehicle, StopIndex))
 	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s at %s (stop %d): car %d -> %s, by %s (%s, set to %s)"),
-			*Train->GetTrainName().ToString(), Station->GetStationIdentifier() ? *Station->GetStationIdentifier()->GetStationName().ToString() : TEXT("?"), StopIndex + 1, CarIndex + 1,
-			*FCCCarMode::GetDisplayName(Mode).ToString(), *GetNameSafe(Platform), *GetNameSafe(Platform->GetClass()),
+		const AFGTrainStationIdentifier* DockedAt = Station->GetStationIdentifier();
+		const AFGTrainStationIdentifier* Planned = TimeTable->GetStop(StopIndex).Station;
+		const FString PlannedNote = DockedAt == Planned ? FString()
+			: FString::Printf(TEXT(", planned %s"), Planned ? *Planned->GetStationName().ToString() : TEXT("?"));
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s at %s (stop %d%s): car %d -> %s, by %s (%s, set to %s)"),
+			*Train->GetTrainName().ToString(), DockedAt ? *DockedAt->GetStationName().ToString() : TEXT("?"), StopIndex + 1, *PlannedNote,
+			CarIndex + 1, *FCCCarMode::GetDisplayName(Mode).ToString(), *GetNameSafe(Platform), *GetNameSafe(Platform->GetClass()),
 			Platform->GetIsInLoadMode() ? TEXT("load") : TEXT("unload"));
 	}
 	return Mode;

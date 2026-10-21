@@ -5,31 +5,28 @@
 #include "FCCTypes.h"
 #include "FCCTimeTableEditSession.generated.h"
 
-class AFGRailroadTimeTable;
 class AFGTrain;
 class AFGTrainStationIdentifier;
 
-// Invisible widget added to the vanilla timetable editor (BPW_Train_TimeTable_Setup). Keeps the car rules the player
-// edits, keyed by (station, how many times that station appears earlier in the list), because the editor recreates its
-// stop widgets; sends all rules to the server when the timetable is saved.
+// Invisible widget added to the vanilla timetable editor (BPW_Train_TimeTable_Setup). Collects the car rules the player
+// edits as a draft per train, keyed by (station, occurrence of that station in the list) because the editor recreates
+// its stop widgets; when the timetable is saved with a draft, sends the rules of every listed stop to the server.
 UCLASS()
 class UFCCTimeTableEditSession : public UUserWidget
 {
 	GENERATED_BODY()
 
 public:
-	using FStopKey = TPair<const AFGTrainStationIdentifier*, int32>;
-
-	// Returns the session of the timetable editor currently open, or nullptr.
+	// Returns the most recently opened timetable editor session that has a train, or nullptr.
 	static UFCCTimeTableEditSession* GetActive();
 
 	// Returns the train being edited.
 	AFGTrain* GetTrain() const;
 
-	// Returns the rule of the stop shown by StationWidget (a BPW_Train_TimeTable_SetupStation).
+	// Returns the rule of the stop shown by StationWidget (a BPW_Train_TimeTable_SetupStation): the draft, or the server's.
 	FFCCStopRule GetRule(UUserWidget* StationWidget) const;
 
-	// Sets the rule of the stop shown by StationWidget; sent to the server when the timetable is saved.
+	// Sets the draft rule of the stop shown by StationWidget.
 	void SetRule(UUserWidget* StationWidget, const FFCCStopRule& Rule);
 
 protected:
@@ -38,6 +35,9 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
+	using FStopKey = TPair<const AFGTrainStationIdentifier*, int32>;
+	using FDraft = TMap<FStopKey, FFCCStopRule>;
+
 	// Returns the timetable editor this session belongs to.
 	UUserWidget* GetSetup() const;
 
@@ -50,13 +50,12 @@ private:
 	// Returns the server's rule for the stop with Key, or an empty rule.
 	FFCCStopRule GetServerRule(const FStopKey& Key) const;
 
+	// Returns the draft of the train being edited, or nullptr if there is none.
+	const FDraft* FindDraft() const;
+
 	UFUNCTION()
 	void HandleSave();
 
 	UFUNCTION()
 	void HandleDiscard();
-
-	TMap<FStopKey, FFCCStopRule> mEdits;
-	bool bBoundSave = false;
-	bool bBoundDiscard = false;
 };

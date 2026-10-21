@@ -6,6 +6,7 @@
 #include "FCCCarModeButton.generated.h"
 
 class UButton;
+class USizeBox;
 class UTextBlock;
 
 // A vanilla standard button that shows a freight car mode and reports clicks.
@@ -15,13 +16,16 @@ class UFCCCarModeButton : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	// Sets the text shown before the mode, e.g. "Car 2".
+	// Sets the text shown with the mode, e.g. "Car 2".
 	void SetLabel(const FText& InLabel);
 
 	// Sets the mode shown.
 	void SetMode(EFCCCarMode InMode);
 
 	EFCCCarMode GetMode() const { return Mode; }
+
+	// Makes the button exactly Width wide, so buttons line up in columns; 0 sizes it to its text.
+	void SetFixedWidth(float Width);
 
 	// Called with this button when it is clicked.
 	TFunction<void(UFCCCarModeButton*)> OnClickedHandler;
@@ -36,24 +40,25 @@ protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 private:
-	// Creates the vanilla button, or a plain one if the vanilla class is missing.
+	// Creates the vanilla button, or a plain one if the vanilla class is missing, inside a size box.
 	void BuildTree();
 
-	// Updates the button text from Label and Mode.
+	// Updates the button text and width.
 	void Refresh();
 
 	UFUNCTION()
 	void HandleClicked();
 
 	UPROPERTY()
-	TObjectPtr<UUserWidget> mVanillaButton;
+	TObjectPtr<USizeBox> mFrame;
 
 	UPROPERTY()
-	TObjectPtr<UButton> mFallbackButton;
+	TObjectPtr<UUserWidget> mVanillaButton;
 
 	UPROPERTY()
 	TObjectPtr<UTextBlock> mFallbackText;
 
 	FText Label;
 	EFCCCarMode Mode = EFCCCarMode::Platform;
+	float FixedWidth = 0.f;
 };

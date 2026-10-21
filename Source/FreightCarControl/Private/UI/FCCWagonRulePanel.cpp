@@ -24,7 +24,7 @@ namespace
 {
 	constexpr float WagonPollInterval = 0.5f;
 
-	// Tallest the expanded stop list gets before it scrolls, so the inventory keeps its room.
+	// Tallest the expanded stop list gets before it scrolls.
 	constexpr float MaxListHeight = 160.f;
 
 	// Whether the stop list is open; kept across menus so it stays as the player left it.
@@ -36,6 +36,56 @@ namespace
 
 	// Size of the vanilla fluid car layout, which has no size override of its own (its background image's size).
 	const FVector2D FluidLayoutSize(611.f, 486.f);
+}
+
+void UFCCWagonRulePanel::FWindowLayout::Capture(UUserWidget* Menu, bool bFluid)
+{
+	if (bCaptured || !Menu || !Menu->WidgetTree)
+	{
+		return;
+	}
+	Container = Cast<USizeBox>(Menu->WidgetTree->FindWidget(bFluid ? TEXT("mLiquidInventoryContainer") : TEXT("mSolidInventoryContainer")));
+	const UWidget* Column = bFluid ? nullptr : Menu->WidgetTree->FindWidget(TEXT("VerticalBox_0"));
+	ColumnSlot = Column ? Cast<UCanvasPanelSlot>(Column->Slot) : nullptr;
+	if (!Container.IsValid() || (!bFluid && !ColumnSlot.IsValid()))
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Freight car panel: window parts not found (container %s, column %s); window not resized"),
+			*GetNameSafe(Container.Get()), *GetNameSafe(ColumnSlot.Get()));
+		return;
+	}
+	Size = bFluid ? FluidLayoutSize : FVector2D(Container->GetWidthOverride(), Container->GetHeightOverride());
+	MaxWidth = Container->GetMaxDesiredWidth();
+	ColumnOffsets = ColumnSlot.IsValid() ? ColumnSlot->GetOffsets() : FMargin();
+	bCaptured = true;
+}
+
+void UFCCWagonRulePanel::FWindowLayout::Apply(const FVector2D& Extra) const
+{
+	if (!bCaptured || !Container.IsValid())
+	{
+		return;
+	}
+	Container->SetWidthOverride(Size.X + Extra.X);
+	Container->SetHeightOverride(Size.Y + Extra.Y);
+	if (MaxWidth > 0.f)
+	{
+		Container->SetMaxDesiredWidth(MaxWidth + Extra.X);
+	}
+	if (ColumnSlot.IsValid())
+	{
+		// The column is centred vertically on its Top offset; moving the centre by half keeps its top edge in place.
+		FMargin Offsets = ColumnOffsets;
+		Offsets.Right += Extra.X;
+		Offsets.Bottom += Extra.Y;
+		Offsets.Top += Extra.Y * 0.5f;
+		ColumnSlot->SetOffsets(Offsets);
+	}
+}
+
+void UFCCWagonRulePanel::FWindowLayout::Restore()
+{
+	Apply(FVector2D::ZeroVector);
+	bCaptured = false;
 }
 
 TSharedRef<SWidget> UFCCWagonRulePanel::RebuildWidget()
@@ -73,6 +123,12 @@ void UFCCWagonRulePanel::BuildTree()
 void UFCCWagonRulePanel::NativeConstruct()
 {
 	Super::NativeConstruct();
+	bActive = IsForCargoType(GetWagon());
+	SetVisibility(bActive ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	if (!bActive)
+	{
+		return;
+	}
 	if (UButton* Inner = FCCWidgetUtils::GetInnerButton(mToggle))
 	{
 		Inner->OnClicked.AddUniqueDynamic(this, &UFCCWagonRulePanel::HandleToggle);
@@ -82,27 +138,22 @@ void UFCCWagonRulePanel::NativeConstruct()
 		UE_LOG(LogFreightCarControl, Warning, TEXT("Freight car panel: toggle button has no mButton; list stays open"));
 		GWagonPanelExpanded = true;
 	}
-	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this))
-	{
-		Subsystem->OnRulesChanged.AddUniqueDynamic(this, &UFCCWagonRulePanel::HandleRulesChanged);
-	}
+	bDirty = true;
+	Poll();
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(mPollTimer, this, &UFCCWagonRulePanel::Poll, WagonPollInterval, true);
-	}
-	bDirty = true;
-	bLayoutCaptured = false;
-	Poll();
-	RefreshExpanded();
-	if (UWorld* World = GetWorld())
-	{
+		// The window's own layout is still being built during construction; resize it once that is done.
 		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 		{
-			CaptureVanillaLayout();
-			ApplyWindowLayout();
+			if (bActive)
+			{
+				mLayout.Capture(FCCWidgetUtils::GetOwningUserWidget(this), Cast<UCanvasPanelSlot>(Slot) != nullptr);
+				RefreshExpanded();
+			}
 		}));
 	}
-	UE_LOG(LogFreightCarControl, Log, TEXT("Freight car panel shown in %s for %s"), *GetNameSafe(FCCWidgetUtils::GetOwningUserWidget(this)), *GetNameSafe(GetWagon()));
+	UE_LOG(LogFreightCarControl, Log, TEXT("Freight car panel shown for %s"), *GetNameSafe(GetWagon()));
 }
 
 void UFCCWagonRulePanel::NativeDestruct()
@@ -111,17 +162,21 @@ void UFCCWagonRulePanel::NativeDestruct()
 	{
 		World->GetTimerManager().ClearTimer(mPollTimer);
 	}
-	bLayoutCaptured = false;
-	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this))
-	{
-		Subsystem->OnRulesChanged.RemoveDynamic(this, &UFCCWagonRulePanel::HandleRulesChanged);
-	}
+	// The game reuses menu widgets; leave the window as it was found.
+	bActive = false;
+	mLayout.Restore();
 	Super::NativeDestruct();
 }
 
 AFGFreightWagon* UFCCWagonRulePanel::GetWagon() const
 {
 	return Cast<AFGFreightWagon>(FCCWidgetUtils::GetObjectProperty(FCCWidgetUtils::GetOwningUserWidget(this), TEXT("mInteractObject")));
+}
+
+bool UFCCWagonRulePanel::IsForCargoType(const AFGFreightWagon* Wagon) const
+{
+	const bool bFluidLayout = Cast<UCanvasPanelSlot>(Slot) != nullptr;
+	return Wagon && bFluidLayout == (Wagon->GetFreightCargoType() == EFreightCargoType::FCT_Liquid);
 }
 
 void UFCCWagonRulePanel::HandleToggle()
@@ -133,105 +188,43 @@ void UFCCWagonRulePanel::HandleToggle()
 void UFCCWagonRulePanel::RefreshExpanded()
 {
 	const int32 StopCount = mShownStations.Num();
-	FText Text;
-	if (mShownCarIndex == INDEX_NONE || StopCount == 0)
+	const bool bOpen = GWagonPanelExpanded && StopCount > 0;
+	FText Text = LOCTEXT("WagonToggleNoStops", "Timetable rules: no timetable");
+	if (mShownCarIndex != INDEX_NONE && StopCount > 0)
 	{
-		Text = LOCTEXT("WagonToggleNoStops", "Timetable rules: no timetable");
-	}
-	else
-	{
-		Text = FText::Format(GWagonPanelExpanded
+		Text = FText::Format(bOpen
 				? LOCTEXT("WagonToggleOpen", "Hide timetable rules (car {0} of {1})")
 				: LOCTEXT("WagonToggleClosed", "Timetable rules (car {0} of {1}, {2} stops)"),
 			mShownCarIndex + 1, mShownCarCount, StopCount);
 	}
 	FCCWidgetUtils::SetWidgetText(mToggle, Text);
-	mListBox->SetVisibility(GWagonPanelExpanded && StopCount > 0 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	ApplyWindowLayout();
-}
-
-void UFCCWagonRulePanel::CaptureVanillaLayout()
-{
-	UUserWidget* Menu = FCCWidgetUtils::GetOwningUserWidget(this);
-	if (!Menu || !Menu->WidgetTree)
-	{
-		return;
-	}
-	bFluidLayout = Cast<UCanvasPanelSlot>(Slot) != nullptr;
-	mContainer = Cast<USizeBox>(Menu->WidgetTree->FindWidget(bFluidLayout ? TEXT("mLiquidInventoryContainer") : TEXT("mSolidInventoryContainer")));
-	UWidget* Column = bFluidLayout ? nullptr : Menu->WidgetTree->FindWidget(TEXT("VerticalBox_0"));
-	mColumnSlot = Column ? Cast<UCanvasPanelSlot>(Column->Slot) : nullptr;
-	if (!mContainer.IsValid() || (!bFluidLayout && !mColumnSlot.IsValid()))
-	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("Freight car panel: window parts not found (container %s, column %s); window not resized"),
-			*GetNameSafe(mContainer.Get()), *GetNameSafe(mColumnSlot.Get()));
-		return;
-	}
-	bContainerHadOverride = !bFluidLayout;
-	mContainerSize = bFluidLayout ? FluidLayoutSize : FVector2D(mContainer->GetWidthOverride(), mContainer->GetHeightOverride());
-	mContainerMaxWidth = mContainer->GetMaxDesiredWidth();
-	if (mColumnSlot.IsValid())
-	{
-		mColumnOffsets = mColumnSlot->GetOffsets();
-	}
-	bLayoutCaptured = true;
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Freight car panel: %s layout %.0fx%.0f captured"), bFluidLayout ? TEXT("fluid") : TEXT("solid"), mContainerSize.X, mContainerSize.Y);
-}
-
-void UFCCWagonRulePanel::ApplyWindowLayout()
-{
-	if (!bLayoutCaptured || !mContainer.IsValid())
-	{
-		return;
-	}
-	const FVector2D Extra = GWagonPanelExpanded && mShownStations.Num() > 0 ? ExtraSizeOpen : ExtraSizeClosed;
-	mContainer->SetWidthOverride(mContainerSize.X + Extra.X);
-	mContainer->SetHeightOverride(mContainerSize.Y + Extra.Y);
-	if (mContainerMaxWidth > 0.f)
-	{
-		mContainer->SetMaxDesiredWidth(mContainerMaxWidth + Extra.X);
-	}
-	if (mColumnSlot.IsValid())
-	{
-		FMargin Offsets = mColumnOffsets;
-		Offsets.Right += Extra.X;
-		Offsets.Bottom += Extra.Y;
-		Offsets.Top += Extra.Y * 0.5f;
-		mColumnSlot->SetOffsets(Offsets);
-	}
-}
-
-void UFCCWagonRulePanel::HandleRulesChanged()
-{
-	bDirty = true;
-	Poll();
+	mListBox->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	mLayout.Apply(bOpen ? ExtraSizeOpen : ExtraSizeClosed);
 }
 
 void UFCCWagonRulePanel::Poll()
 {
-	AFGFreightWagon* Wagon = GetWagon();
-	AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
-	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
+	const AFGFreightWagon* Wagon = GetWagon();
+	const AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
+	const AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
+	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
 	TArray<TWeakObjectPtr<UObject>> Stations;
-	if (TimeTable)
+	for (int32 StopIndex = 0; TimeTable && StopIndex < TimeTable->GetNumStops(); ++StopIndex)
 	{
-		TArray<FTimeTableStop> Stops;
-		TimeTable->GetStops(Stops);
-		for (const FTimeTableStop& Stop : Stops)
-		{
-			Stations.Add(Stop.Station);
-		}
+		Stations.Add(TimeTable->GetStop(StopIndex).Station);
 	}
-	const int32 CarIndex = AFCCRuleSubsystem::GetFreightCarIndex(Wagon);
-	const int32 CarCount = AFCCRuleSubsystem::GetFreightCarCount(Train);
-	if (!bDirty && Stations == mShownStations && CarIndex == mShownCarIndex && CarCount == mShownCarCount)
+	const TArray<AFGFreightWagon*> Cars = AFCCRuleSubsystem::GetFreightCars(Train);
+	const int32 CarIndex = Cars.IndexOfByKey(Wagon);
+	const uint32 Revision = Subsystem ? Subsystem->GetRevision() : 0;
+	if (!bDirty && Stations == mShownStations && CarIndex == mShownCarIndex && Cars.Num() == mShownCarCount && Revision == mShownRevision)
 	{
 		return;
 	}
 	bDirty = false;
 	mShownStations = Stations;
 	mShownCarIndex = CarIndex;
-	mShownCarCount = CarCount;
+	mShownCarCount = Cars.Num();
+	mShownRevision = Revision;
 	RebuildRows();
 	RefreshExpanded();
 }
@@ -239,10 +232,9 @@ void UFCCWagonRulePanel::Poll()
 void UFCCWagonRulePanel::RebuildRows()
 {
 	mRows->ClearChildren();
-	mButtons.Reset();
-	AFGFreightWagon* Wagon = GetWagon();
-	AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
-	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
+	const AFGFreightWagon* Wagon = GetWagon();
+	const AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
+	const AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
 	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
 	if (!TimeTable || mShownCarIndex == INDEX_NONE || !Subsystem)
 	{
@@ -250,30 +242,28 @@ void UFCCWagonRulePanel::RebuildRows()
 	}
 	for (int32 StopIndex = 0; StopIndex < TimeTable->GetNumStops(); ++StopIndex)
 	{
-		const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
 		UFCCCarModeButton* Button = CreateWidget<UFCCCarModeButton>(this, UFCCCarModeButton::StaticClass());
 		if (!Button)
 		{
 			continue;
 		}
+		const AFGTrainStationIdentifier* Station = TimeTable->GetStop(StopIndex).Station;
 		Button->Index = StopIndex;
 		Button->bModeFirst = true;
-		Button->SetLabel(FText::Format(LOCTEXT("StopLabel", "{0}. {1}"), StopIndex + 1,
-			Stop.Station ? Stop.Station->GetStationName() : LOCTEXT("UnknownStation", "?")));
+		Button->SetLabel(FText::Format(LOCTEXT("StopLabel", "{0}. {1}"), StopIndex + 1, Station ? Station->GetStationName() : LOCTEXT("UnknownStation", "?")));
 		Button->SetMode(Subsystem->GetCarMode(TimeTable, StopIndex, mShownCarIndex));
 		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked) { OnStopClicked(Clicked); };
 		if (UScrollBoxSlot* RowSlot = Cast<UScrollBoxSlot>(mRows->AddChild(Button)))
 		{
 			RowSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
 		}
-		mButtons.Add(Button);
 	}
 }
 
 void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button)
 {
-	AFGFreightWagon* Wagon = GetWagon();
-	AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
+	const AFGFreightWagon* Wagon = GetWagon();
+	const AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
 	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
 	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
 	UFCCRemoteCallObject* RCO = UFCCRemoteCallObject::GetLocal(this);
@@ -286,8 +276,7 @@ void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button)
 	Rule.SetCarMode(mShownCarIndex, Mode);
 	Rule.Trim();
 	Button->SetMode(Mode);
-	RCO->Server_SetStopRule(TimeTable, Button->Index, TimeTable->GetStop(Button->Index).Station, Rule);
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Freight car panel: stop %d car %d -> %s"), Button->Index + 1, mShownCarIndex + 1, *FCCCarMode::GetDisplayName(Mode).ToString());
+	RCO->Server_SetStopRule(TimeTable, Button->Index, Rule);
 }
 
 #undef LOCTEXT_NAMESPACE

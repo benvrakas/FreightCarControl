@@ -7,7 +7,6 @@ class AFGBuildableTrainPlatformCargo;
 class AFGRailroadTimeTable;
 class AFGRailroadVehicle;
 class AFGTrain;
-class AFGTrainStationIdentifier;
 
 // What a freight car does when its train docks at a timetable stop.
 UENUM(BlueprintType)
@@ -36,8 +35,11 @@ namespace FCCCarMode
 	// Returns the mode's display name.
 	FREIGHTCARCONTROL_API FText GetDisplayName(EFCCCarMode Mode);
 
-	// Returns the one-letter code used by the chat command.
+	// Returns the one-letter code used in logs and the chat command.
 	FREIGHTCARCONTROL_API const TCHAR* GetCode(EFCCCarMode Mode);
+
+	// Parses a mode from its enum name ("platform", "skip", "load", "unload"; any case), independent of the game language.
+	FREIGHTCARCONTROL_API TOptional<EFCCCarMode> FromName(const FString& Name);
 }
 
 // Car modes for one timetable stop, indexed by freight car position (0 = first freight car of the train).
@@ -76,7 +78,7 @@ struct FREIGHTCARCONTROL_API FFCCStopRule
 		return !Cars.ContainsByPredicate([](EFCCCarMode Mode) { return Mode != EFCCCarMode::Platform; });
 	}
 
-	// Drops trailing Platform entries and out-of-range values.
+	// Drops trailing Platform entries and replaces out-of-range values (e.g. from a client) with Platform.
 	void Trim()
 	{
 		for (EFCCCarMode& Mode : Cars)
@@ -90,6 +92,17 @@ struct FREIGHTCARCONTROL_API FFCCStopRule
 		{
 			Cars.Pop(EAllowShrinking::No);
 		}
+	}
+
+	// Returns the cars' codes, e.g. "P-LU", padded with "P" to at least MinCars.
+	FString ToCodes(int32 MinCars = 0) const
+	{
+		FString Codes;
+		for (int32 Car = 0; Car < FMath::Max(MinCars, Cars.Num()); ++Car)
+		{
+			Codes += FCCCarMode::GetCode(GetCarMode(Car));
+		}
+		return Codes;
 	}
 
 	bool operator==(const FFCCStopRule& Other) const = default;
@@ -110,14 +123,7 @@ struct FREIGHTCARCONTROL_API FFCCTimeTableRules
 	// Returns true if no stop has a car rule.
 	bool IsDefault() const
 	{
-		for (const FFCCStopRule& Stop : Stops)
-		{
-			if (!Stop.IsDefault())
-			{
-				return false;
-			}
-		}
-		return true;
+		return !Stops.ContainsByPredicate([](const FFCCStopRule& Stop) { return !Stop.IsDefault(); });
 	}
 };
 
@@ -142,7 +148,7 @@ struct FREIGHTCARCONTROL_API FFCCPlatformOverride
 	bool bForcedLoadMode = false;
 };
 
-// Rules sent by a client for a timetable it is saving, waiting for the timetable's new stops to arrive.
+// Rules a client saved from the timetable editor, waiting until the train's timetable has as many stops.
 USTRUCT()
 struct FREIGHTCARCONTROL_API FFCCPendingRules
 {
@@ -153,9 +159,6 @@ struct FREIGHTCARCONTROL_API FFCCPendingRules
 
 	UPROPERTY()
 	TArray<FFCCStopRule> Rules;
-
-	UPROPERTY()
-	TArray<TObjectPtr<AFGTrainStationIdentifier>> ExpectedStations;
 
 	double ReceivedTime = 0.0;
 };

@@ -16,50 +16,28 @@ namespace
 	// Largest freight car position a rule may name; longer trains than this aren't buildable in practice.
 	constexpr int32 MaxCarIndex = 255;
 
-	// Seconds between checks for platform overrides whose dock has ended.
+	// Seconds between sweeps for ended platform overrides and pending editor rules.
 	constexpr float SweepInterval = 2.0f;
 
-	// Seconds a client's timetable save waits for the matching stop list before it is dropped.
+	// Seconds rules saved from the timetable editor wait for the timetable's stops before they are dropped.
 	constexpr double PendingLifetime = 30.0;
 
-	// Returns "station#occurrence" keys for Stops, so the same station visited twice gets two keys.
+	// Returns (station, occurrence) keys for Stops, so the same station visited twice gets two keys.
 	TArray<TPair<const AFGTrainStationIdentifier*, int32>> MakeStopKeys(const TArray<FTimeTableStop>& Stops)
 	{
 		TArray<TPair<const AFGTrainStationIdentifier*, int32>> Keys;
 		TMap<const AFGTrainStationIdentifier*, int32> Seen;
 		for (const FTimeTableStop& Stop : Stops)
 		{
-			int32& Count = Seen.FindOrAdd(Stop.Station);
-			Keys.Emplace(Stop.Station, Count++);
+			Keys.Emplace(Stop.Station, Seen.FindOrAdd(Stop.Station)++);
 		}
 		return Keys;
-	}
-
-	// Returns the stations Stops visit, in order.
-	TArray<const AFGTrainStationIdentifier*> GetStations(const TArray<FTimeTableStop>& Stops)
-	{
-		TArray<const AFGTrainStationIdentifier*> Stations;
-		for (const FTimeTableStop& Stop : Stops)
-		{
-			Stations.Add(Stop.Station);
-		}
-		return Stations;
 	}
 
 	FString DescribeTimeTable(const AFGRailroadTimeTable* TimeTable)
 	{
 		const AFGTrain* Train = TimeTable ? Cast<AFGTrain>(TimeTable->GetOwner()) : nullptr;
 		return Train ? FString::Printf(TEXT("%s (%s)"), *Train->GetTrainName().ToString(), *GetNameSafe(TimeTable)) : GetNameSafe(TimeTable);
-	}
-
-	FString DescribeRule(const FFCCStopRule& Rule)
-	{
-		FString Codes;
-		for (const EFCCCarMode Mode : Rule.Cars)
-		{
-			Codes += FCCCarMode::GetCode(Mode);
-		}
-		return Codes;
 	}
 }
 
@@ -88,7 +66,7 @@ void AFCCRuleSubsystem::BeginPlay()
 		HasAuthority() ? TEXT("server") : TEXT("client"), mRules.Num(), mOverrides.Num());
 	if (HasAuthority())
 	{
-		GetWorldTimerManager().SetTimer(mSweepTimer, this, &AFCCRuleSubsystem::SweepOverrides, SweepInterval, true);
+		GetWorldTimerManager().SetTimer(mSweepTimer, this, &AFCCRuleSubsystem::Sweep, SweepInterval, true);
 	}
 }
 
@@ -144,12 +122,7 @@ FFCCTimeTableRules& AFCCRuleSubsystem::FindOrAddEntry(AFGRailroadTimeTable* Time
 
 EFCCCarMode AFCCRuleSubsystem::GetCarMode(const AFGRailroadTimeTable* TimeTable, int32 StopIndex, int32 CarIndex) const
 {
-	const FFCCTimeTableRules* Entry = FindEntry(TimeTable);
-	if (!Entry || !Entry->Stops.IsValidIndex(StopIndex))
-	{
-		return EFCCCarMode::Platform;
-	}
-	return Entry->Stops[StopIndex].GetCarMode(CarIndex);
+	return GetStopRule(TimeTable, StopIndex).GetCarMode(CarIndex);
 }
 
 FFCCStopRule AFCCRuleSubsystem::GetStopRule(const AFGRailroadTimeTable* TimeTable, int32 StopIndex) const
@@ -158,28 +131,8 @@ FFCCStopRule AFCCRuleSubsystem::GetStopRule(const AFGRailroadTimeTable* TimeTabl
 	return Entry && Entry->Stops.IsValidIndex(StopIndex) ? Entry->Stops[StopIndex] : FFCCStopRule();
 }
 
-TArray<FFCCStopRule> AFCCRuleSubsystem::GetAllStopRules(const AFGRailroadTimeTable* TimeTable) const
-{
-	TArray<FFCCStopRule> Result;
-	if (const FFCCTimeTableRules* Entry = FindEntry(TimeTable))
-	{
-		Result = Entry->Stops;
-	}
-	if (TimeTable && Result.Num() < TimeTable->GetNumStops())
-	{
-		Result.SetNum(TimeTable->GetNumStops());
-	}
-	return Result;
-}
-
 void AFCCRuleSubsystem::SetCarMode(AFGRailroadTimeTable* TimeTable, int32 StopIndex, int32 CarIndex, EFCCCarMode Mode)
 {
-	if (!HasAuthority() || !TimeTable || StopIndex < 0 || StopIndex >= TimeTable->GetNumStops() || CarIndex < 0 || CarIndex > MaxCarIndex)
-	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("SetCarMode rejected: authority=%d timetable=%s stop=%d car=%d"),
-			HasAuthority(), *GetNameSafe(TimeTable), StopIndex, CarIndex);
-		return;
-	}
 	FFCCStopRule Rule = GetStopRule(TimeTable, StopIndex);
 	Rule.SetCarMode(CarIndex, Mode);
 	SetStopRule(TimeTable, StopIndex, Rule);
@@ -200,33 +153,32 @@ void AFCCRuleSubsystem::SetStopRule(AFGRailroadTimeTable* TimeTable, int32 StopI
 	}
 	Entry.Stops[StopIndex] = Rule;
 	Entry.Stops[StopIndex].Trim();
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s stop %d: cars [%s]"), *DescribeTimeTable(TimeTable), StopIndex, *DescribeRule(Entry.Stops[StopIndex]));
+	UE_LOG(LogFreightCarControl, Log, TEXT("%s stop %d: cars [%s]"), *DescribeTimeTable(TimeTable), StopIndex + 1, *Entry.Stops[StopIndex].ToCodes());
 	RulesChanged(TEXT("set stop rule"));
 }
 
 void AFCCRuleSubsystem::SetAllStopRules(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules)
 {
-	if (!HasAuthority() || !TimeTable || Rules.Num() > TimeTable->GetMaxNumStops())
+	if (!HasAuthority() || !TimeTable)
 	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("SetAllStopRules rejected: authority=%d timetable=%s rules=%d"),
-			HasAuthority(), *GetNameSafe(TimeTable), Rules.Num());
+		UE_LOG(LogFreightCarControl, Warning, TEXT("SetAllStopRules rejected: authority=%d timetable=%s"), HasAuthority(), *GetNameSafe(TimeTable));
 		return;
 	}
 	FFCCTimeTableRules& Entry = FindOrAddEntry(TimeTable);
 	Entry.Stops = Rules;
 	Entry.Stops.SetNum(FMath::Min(Entry.Stops.Num(), TimeTable->GetNumStops()));
-	for (int32 Index = 0; Index < Entry.Stops.Num(); ++Index)
+	FString Summary;
+	for (FFCCStopRule& Stop : Entry.Stops)
 	{
-		FFCCStopRule& Stop = Entry.Stops[Index];
 		Stop.Cars.SetNum(FMath::Min(Stop.Cars.Num(), MaxCarIndex + 1));
 		Stop.Trim();
-		UE_LOG(LogFreightCarControl, Verbose, TEXT("  stop %d: cars [%s]"), Index, *DescribeRule(Stop));
+		Summary += FString::Printf(TEXT(" [%s]"), *Stop.ToCodes());
 	}
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s: replaced all rules (%d stops)"), *DescribeTimeTable(TimeTable), Entry.Stops.Num());
+	UE_LOG(LogFreightCarControl, Log, TEXT("%s: all stop rules set:%s"), *DescribeTimeTable(TimeTable), *Summary);
 	RulesChanged(TEXT("set all rules"));
 }
 
-void AFCCRuleSubsystem::SetAllStopRulesWhenStopsMatch(AFGTrain* Train, const TArray<FFCCStopRule>& Rules, const TArray<AFGTrainStationIdentifier*>& ExpectedStations)
+void AFCCRuleSubsystem::QueueEditorRules(AFGTrain* Train, const TArray<FFCCStopRule>& Rules)
 {
 	if (!HasAuthority() || !Train)
 	{
@@ -236,71 +188,60 @@ void AFCCRuleSubsystem::SetAllStopRulesWhenStopsMatch(AFGTrain* Train, const TAr
 	FFCCPendingRules& Pending = mPending.AddDefaulted_GetRef();
 	Pending.Train = Train;
 	Pending.Rules = Rules;
-	Pending.ExpectedStations.Append(ExpectedStations);
 	Pending.ReceivedTime = FPlatformTime::Seconds();
-	if (AFGRailroadTimeTable* TimeTable = Train->GetTimeTable())
-	{
-		TryApplyPending(TimeTable);
-	}
-	if (mPending.ContainsByPredicate([Train](const FFCCPendingRules& P) { return P.Train == Train; }))
-	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s: rules for %d stops wait for the timetable's new stops"), *Train->GetTrainName().ToString(), Rules.Num());
-	}
+	ProcessPendingRules();
 }
 
-void AFCCRuleSubsystem::TryApplyPending(AFGRailroadTimeTable* TimeTable)
+void AFCCRuleSubsystem::ProcessPendingRules()
 {
-	const int32 Index = mPending.IndexOfByPredicate([TimeTable](const FFCCPendingRules& Pending)
+	const double Now = FPlatformTime::Seconds();
+	for (int32 Index = mPending.Num() - 1; Index >= 0; --Index)
 	{
-		return IsValid(Pending.Train) && TimeTable && Pending.Train->GetTimeTable() == TimeTable;
-	});
-	if (Index == INDEX_NONE || !TimeTable)
-	{
-		return;
+		const FFCCPendingRules& Pending = mPending[Index];
+		AFGRailroadTimeTable* TimeTable = IsValid(Pending.Train) ? Pending.Train->GetTimeTable() : nullptr;
+		if (TimeTable && TimeTable->GetNumStops() == Pending.Rules.Num())
+		{
+			UE_LOG(LogFreightCarControl, Log, TEXT("%s: applying rules saved from the timetable editor"), *DescribeTimeTable(TimeTable));
+			const TArray<FFCCStopRule> Rules = Pending.Rules;
+			mPending.RemoveAt(Index);
+			SetAllStopRules(TimeTable, Rules);
+		}
+		else if (!IsValid(Pending.Train) || Now - Pending.ReceivedTime > PendingLifetime)
+		{
+			UE_LOG(LogFreightCarControl, Warning, TEXT("Dropped rules from the timetable editor for %s: its timetable never got %d stops (has %d)"),
+				*GetNameSafe(Pending.Train), Pending.Rules.Num(), TimeTable ? TimeTable->GetNumStops() : 0);
+			mPending.RemoveAt(Index);
+		}
+		else
+		{
+			UE_LOG(LogFreightCarControl, Verbose, TEXT("%s: editor rules for %d stops wait (timetable has %d)"),
+				*GetNameSafe(Pending.Train), Pending.Rules.Num(), TimeTable ? TimeTable->GetNumStops() : 0);
+		}
 	}
-	TArray<FTimeTableStop> Stops;
-	TimeTable->GetStops(Stops);
-	const TArray<const AFGTrainStationIdentifier*> Current = GetStations(Stops);
-	TArray<const AFGTrainStationIdentifier*> Expected;
-	for (const TObjectPtr<AFGTrainStationIdentifier>& Station : mPending[Index].ExpectedStations)
-	{
-		Expected.Add(Station);
-	}
-	if (Current.Num() != mPending[Index].Rules.Num())
-	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s: rules from the timetable editor are for %d stops, timetable has %d; waiting"),
-			*DescribeTimeTable(TimeTable), mPending[Index].Rules.Num(), Current.Num());
-		return;
-	}
-	const FFCCPendingRules Pending = mPending[Index];
-	mPending.RemoveAt(Index);
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s: applying rules saved from the timetable editor%s"), *DescribeTimeTable(TimeTable),
-		Current == Expected ? TEXT("") : TEXT(" (some stops' stations differ from the editor's, e.g. changed by another mod; matched by position)"));
-	SetAllStopRules(TimeTable, Pending.Rules);
 }
 
 void AFCCRuleSubsystem::NotifyStopInserted(AFGRailroadTimeTable* TimeTable, int32 StopIndex)
 {
 	FFCCTimeTableRules* Entry = FindEntry(TimeTable);
-	if (!Entry || StopIndex < 0 || StopIndex >= Entry->Stops.Num())
+	if (Entry && StopIndex >= 0 && StopIndex < Entry->Stops.Num())
 	{
-		return;
+		Entry->Stops.Insert(FFCCStopRule(), StopIndex);
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s: stop inserted at %d, rules shifted"), *DescribeTimeTable(TimeTable), StopIndex + 1);
+		RulesChanged(TEXT("stop inserted"));
 	}
-	Entry->Stops.Insert(FFCCStopRule(), StopIndex);
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s: stop inserted at %d, rules shifted"), *DescribeTimeTable(TimeTable), StopIndex);
-	RulesChanged(TEXT("stop inserted"));
+	ProcessPendingRules();
 }
 
 void AFCCRuleSubsystem::NotifyStopRemoved(AFGRailroadTimeTable* TimeTable, int32 StopIndex)
 {
 	FFCCTimeTableRules* Entry = FindEntry(TimeTable);
-	if (!Entry || !Entry->Stops.IsValidIndex(StopIndex))
+	if (Entry && Entry->Stops.IsValidIndex(StopIndex))
 	{
-		return;
+		Entry->Stops.RemoveAt(StopIndex);
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s: stop %d removed, rules shifted"), *DescribeTimeTable(TimeTable), StopIndex + 1);
+		RulesChanged(TEXT("stop removed"));
 	}
-	Entry->Stops.RemoveAt(StopIndex);
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s: stop %d removed, rules shifted"), *DescribeTimeTable(TimeTable), StopIndex);
-	RulesChanged(TEXT("stop removed"));
+	ProcessPendingRules();
 }
 
 void AFCCRuleSubsystem::NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& OldStops, const TArray<FTimeTableStop>& NewStops)
@@ -310,24 +251,43 @@ void AFCCRuleSubsystem::NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, con
 	{
 		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> OldKeys = MakeStopKeys(OldStops);
 		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> NewKeys = MakeStopKeys(NewStops);
-		TArray<FFCCStopRule> Remapped;
-		Remapped.SetNum(NewStops.Num());
-		int32 Kept = 0;
+		TArray<int32> Source;
+		Source.Init(INDEX_NONE, NewKeys.Num());
+		TBitArray<> Used(false, OldKeys.Num());
 		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
 		{
 			const int32 OldIndex = OldKeys.IndexOfByKey(NewKeys[NewIndex]);
-			if (Entry->Stops.IsValidIndex(OldIndex))
+			if (OldIndex != INDEX_NONE)
 			{
-				Remapped[NewIndex] = Entry->Stops[OldIndex];
-				Kept += Remapped[NewIndex].IsDefault() ? 0 : 1;
+				Source[NewIndex] = OldIndex;
+				Used[OldIndex] = true;
 			}
 		}
-		Entry->Stops = MoveTemp(Remapped);
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s: stops replaced (%d -> %d), %d stop rules kept"),
-			*DescribeTimeTable(TimeTable), OldStops.Num(), NewStops.Num(), Kept);
-		RulesChanged(TEXT("stops replaced"));
+		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
+		{
+			if (Source[NewIndex] == INDEX_NONE && OldKeys.IsValidIndex(NewIndex) && !Used[NewIndex])
+			{
+				Source[NewIndex] = NewIndex;
+				Used[NewIndex] = true;
+			}
+		}
+		TArray<FFCCStopRule> Remapped;
+		Remapped.SetNum(NewKeys.Num());
+		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
+		{
+			if (Entry->Stops.IsValidIndex(Source[NewIndex]))
+			{
+				Remapped[NewIndex] = Entry->Stops[Source[NewIndex]];
+			}
+		}
+		if (Remapped != Entry->Stops)
+		{
+			Entry->Stops = MoveTemp(Remapped);
+			UE_LOG(LogFreightCarControl, Log, TEXT("%s: stops replaced (%d -> %d), rules realigned"), *DescribeTimeTable(TimeTable), OldStops.Num(), NewStops.Num());
+			RulesChanged(TEXT("stops replaced"));
+		}
 	}
-	TryApplyPending(TimeTable);
+	ProcessPendingRules();
 }
 
 void AFCCRuleSubsystem::BeginPlatformOverride(AFGBuildableTrainPlatformCargo* Platform, AFGRailroadVehicle* Vehicle, bool bLoadMode)
@@ -379,7 +339,7 @@ void AFCCRuleSubsystem::EndPlatformOverride(AFGBuildableTrainPlatformCargo* Plat
 	UE_LOG(LogFreightCarControl, Log, TEXT("%s restored to %s"), *GetNameSafe(Platform), Override.bOriginalLoadMode ? TEXT("load") : TEXT("unload"));
 }
 
-void AFCCRuleSubsystem::SweepOverrides()
+void AFCCRuleSubsystem::Sweep()
 {
 	TArray<AFGBuildableTrainPlatformCargo*> Ended;
 	for (const FFCCPlatformOverride& Override : mOverrides)
@@ -393,53 +353,28 @@ void AFCCRuleSubsystem::SweepOverrides()
 	{
 		EndPlatformOverride(Platform);
 	}
-	mOverrides.RemoveAll([](const FFCCPlatformOverride& O) { return !IsValid(O.Platform); });
-
-	const double Now = FPlatformTime::Seconds();
-	mPending.RemoveAll([Now](const FFCCPendingRules& Pending)
-	{
-		const bool bStale = !IsValid(Pending.Train) || Now - Pending.ReceivedTime > PendingLifetime;
-		if (bStale)
-		{
-			UE_LOG(LogFreightCarControl, Warning, TEXT("Dropped rules from the timetable editor for %s: the saved stops never arrived"), *GetNameSafe(Pending.Train));
-		}
-		return bStale;
-	});
+	ProcessPendingRules();
 }
 
-int32 AFCCRuleSubsystem::GetFreightCarIndex(const AFGRailroadVehicle* Vehicle)
+TArray<AFGFreightWagon*> AFCCRuleSubsystem::GetFreightCars(const AFGTrain* Train)
 {
-	const AFGTrain* Train = Vehicle ? Vehicle->GetTrain() : nullptr;
-	if (!Train || !Vehicle->IsA<AFGFreightWagon>())
-	{
-		return INDEX_NONE;
-	}
-	int32 Index = 0;
-	for (AFGRailroadSubsystem::TConstTrainIterator It(Train->GetFirstVehicle()); It; ++It)
-	{
-		if (*It == Vehicle)
-		{
-			return Index;
-		}
-		if (It->IsA<AFGFreightWagon>())
-		{
-			++Index;
-		}
-	}
-	return INDEX_NONE;
-}
-
-int32 AFCCRuleSubsystem::GetFreightCarCount(const AFGTrain* Train)
-{
-	int32 Count = 0;
+	TArray<AFGFreightWagon*> Cars;
 	if (Train)
 	{
 		for (AFGRailroadSubsystem::TConstTrainIterator It(Train->GetFirstVehicle()); It; ++It)
 		{
-			Count += It->IsA<AFGFreightWagon>() ? 1 : 0;
+			if (AFGFreightWagon* Wagon = Cast<AFGFreightWagon>(const_cast<AFGRailroadVehicle*>(*It)))
+			{
+				Cars.Add(Wagon);
+			}
 		}
 	}
-	return Count;
+	return Cars;
+}
+
+int32 AFCCRuleSubsystem::GetFreightCarIndex(const AFGRailroadVehicle* Vehicle)
+{
+	return Vehicle ? GetFreightCars(Vehicle->GetTrain()).IndexOfByKey(Vehicle) : INDEX_NONE;
 }
 
 void AFCCRuleSubsystem::Compact()
@@ -466,16 +401,16 @@ void AFCCRuleSubsystem::Compact()
 
 void AFCCRuleSubsystem::RulesChanged(const TCHAR* Reason)
 {
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Rules changed: %s"), Reason);
+	++mRevision;
+	UE_LOG(LogFreightCarControl, Verbose, TEXT("Rules changed (%s), revision %u"), Reason, mRevision);
 	if (HasAuthority())
 	{
 		ForceNetUpdate();
 	}
-	OnRulesChanged.Broadcast();
 }
 
 void AFCCRuleSubsystem::OnRep_Rules()
 {
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Rules replicated: %d time tables"), mRules.Num());
-	OnRulesChanged.Broadcast();
+	++mRevision;
+	UE_LOG(LogFreightCarControl, Verbose, TEXT("Rules replicated: %d time tables, revision %u"), mRules.Num(), mRevision);
 }

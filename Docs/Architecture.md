@@ -74,24 +74,23 @@ world through `IFGSaveInterface`; nothing is written to vanilla objects, so remo
 Entries with no rules, or whose timetable is gone, are dropped before saving.
 
 Stop alignment is kept by hooks on `AFGRailroadTimeTable::AddStop`, `RemoveStop`, `SetStops` and
-`PurgeInvalidStops`. When the whole list is replaced, stops are matched by (station, occurrence of that station), so
-reordering stops keeps their rules.
+`PurgeInvalidStops`. When the whole list is replaced, each new stop takes the rule of the old stop with the same
+(station, occurrence of that station), so reordering keeps rules with their stops; a stop left unmatched (its station
+changed, e.g. swapped by DynamicTimeTable, which hooks `SetStops` too) takes the rule of the old stop at the same
+position if no other stop claimed it.
 
-Clients edit through `UFCCRemoteCallObject`:
+Stops are identified by position everywhere else. Clients edit through `UFCCRemoteCallObject`:
 
-- `Server_SetStopRule(timetable, stop, expected station, rule)`: one stop, ignored if that stop no longer visits the
-  expected station. Used by the freight car menu.
-- `Server_SetAllStopRules(train, stations, rules)`: sent one tick after the timetable editor saves, so it arrives after
-  the vanilla save RPC on the same channel. Applied by position once the train's timetable has as many stops as there
-  are rules (a new train has no timetable until the vanilla save creates it); kept pending until then and dropped
-  after 30 s. Stations aren't required to match: DynamicTimeTable hooks `SetStops` too and can swap a stop's station
-  within its group. A mismatch is only logged.
+- `Server_SetStopRule(timetable, stop, rule)`: one stop. Used by the freight car menu.
+- `Server_SetEditorRules(train, rules)`: one rule per stop of the list the timetable editor just saved, sent a tick
+  after the editor's own save so it arrives after it on the same connection. `QueueEditorRules` applies it once the
+  train's timetable has one stop per rule (a new train has no timetable until the vanilla save creates it, and may be
+  built stop by stop); every stop change and the 2-second sweep re-check it; it is dropped after 30 s.
 
-The timetable editor recreates its stop widgets (for example after a stop's settings are saved), so the edit session
-keys edits by (station, occurrence of that station in the list) rather than by widget.
+When a train docks somewhere other than the stop's station (manual docking, or DynamicTimeTable sending it to another
+station of the group), the docked stop's car rules still apply, as the game does with its own stop rules.
 
-When a train docks somewhere other than its current stop's station (manual docking, or DynamicTimeTable sending it to
-another station of the group), the current stop's car rules still apply, as the game does with its own stop rules.
+Clients' UI refreshes by comparing `AFCCRuleSubsystem::GetRevision()`, bumped on every change and every replication.
 
 ## UI
 
@@ -104,23 +103,28 @@ stub widget assets with an editor Python commandlet; property and function names
 
 Hooks (vanilla widget → panel → mod widget):
 
-- `BPW_Train_TimeTable_Setup` → `CanvasPanel_0` → `UFCCTimeTableEditSession`, invisible. Gives each listed stop widget
-  (`BPW_Train_TimeTable_SetupStation`, found inside `mCurrentTimeTable`) the rule its stop has on the server, matched by
-  (station, occurrence); keeps edits; on the editor's `OnSave` dispatcher (fallback: `mSaveButton`) sends all rules in
-  the list's order. `OnDiscard` drops edits.
+- `BPW_Train_TimeTable_Setup` → `CanvasPanel_0` → `UFCCTimeTableEditSession`, invisible. The editor builds more than
+  one of these, so the edits live in a draft per train shared by all sessions, keyed by (station, occurrence of that
+  station in the list) because the editor recreates its stop widgets (`BPW_Train_TimeTable_SetupStation`, found inside
+  `mCurrentTimeTable`). On the editor's `OnSave` dispatcher (fallback: `mSaveButton`), if there is a draft, sends the
+  rule of every listed stop in order: drafted, or the server's for that key. `OnDiscard`, or the last session of the
+  train closing, drops the draft.
 - `BPW_Train_TimeTable_StationSettings` → `VerticalBox_58` (below the wait condition and the load/unload filters) →
-  `UFCCStopRulePanel`. Follows the settings' `mStationWidget` and shows one `UFCCCarModeButton` per freight car of the
-  train (fluid cars labelled); each click cycles Platform → Skip → Load → Unload. The settings' Discard button
-  reverts the panel's edits.
+  `UFCCStopRulePanel`. Follows the settings' `mStationWidget` and shows one 200 px `UFCCCarModeButton` per freight car
+  of the train (fluid cars labelled) in a wrap box inside a scroll box of at most about three rows, so long trains fit;
+  each click cycles Platform → Skip → Load → Unload. The settings' Discard button reverts the panel's edits.
 - `Widget_FreightWagon` → `VerticalBox_0` (solid car layout) and `CanvasPanel_0` (fluid car layout, pinned to the
-  bottom) → `UFCCWagonRulePanel`. A toggle button that opens a short scrolling list of the train's stops with this
-  car's mode; a click saves straight away. One tick after construction it grows the window to fit: the solid layout is
-  a fixed 703×568 `mSolidInventoryContainer` (max width 680) with the inventory column `VerticalBox_0` at a fixed canvas
-  size, the fluid layout a 611×486 canvas without an override. Closed: 60 px taller. Open: also 280 px wider and tall
-  enough for the list. The Take All / Store All buttons are anchored right and move with the edge.
+  bottom) → `UFCCWagonRulePanel`; only the instance in the layout of the car's cargo type runs, the other collapses. A
+  toggle button opens a short scrolling list of the train's stops with this car's mode; a click saves straight away.
+  One tick after construction it grows the window to fit: the solid layout is a fixed 703×568
+  `mSolidInventoryContainer` (max width 680) with the inventory column `VerticalBox_0` at a fixed canvas size, the
+  fluid layout a 611×486 canvas without an override. Closed: 60 px taller. Open: also 280 px wider and tall enough for
+  the list. The Take All / Store All buttons are anchored right and move with the edge. The game reuses menu widgets,
+  so the panel puts the vanilla sizes back when it closes.
 
 `FindNestedWidgetsByClassName` removes duplicates: content of a named slot is reached both from the owner's widget
 tree and from the slot widget's own tree.
 
-SML's generic slot setup dereferences a horizontal-box slot when the parent is a vertical box, so the mod passes no
-slot setup for vertical boxes and sets its own padding in `NativeConstruct`.
+An injected widget must not change its own slot in `NativeConstruct`: that runs while the parent panel is still
+building its Slate slot, and Slate asserts. SML's generic slot setup also dereferences a horizontal-box slot when the
+parent is a vertical box, so the mod passes no slot setup for vertical boxes and keeps its spacing inside its own tree.

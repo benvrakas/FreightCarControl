@@ -3,6 +3,7 @@
 #include "UI/FCCWidgetUtils.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 
 #define LOCTEXT_NAMESPACE "FreightCarControl"
@@ -16,6 +17,12 @@ void UFCCCarModeButton::SetLabel(const FText& InLabel)
 void UFCCCarModeButton::SetMode(EFCCCarMode InMode)
 {
 	Mode = InMode;
+	Refresh();
+}
+
+void UFCCCarModeButton::SetFixedWidth(float Width)
+{
+	FixedWidth = Width;
 	Refresh();
 }
 
@@ -35,13 +42,14 @@ void UFCCCarModeButton::BuildTree()
 	{
 		return;
 	}
+	mFrame = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	WidgetTree->RootWidget = mFrame;
+
 	mVanillaButton = FCCWidgetUtils::CreateStandardButton(WidgetTree, FText::GetEmpty());
 	if (mVanillaButton)
 	{
-		WidgetTree->RootWidget = mVanillaButton;
-		mVanillaButton->Initialize();
-		UButton* Inner = FCCWidgetUtils::GetInnerButton(mVanillaButton);
-		if (Inner)
+		mFrame->AddChild(mVanillaButton);
+		if (UButton* Inner = FCCWidgetUtils::GetInnerButton(mVanillaButton))
 		{
 			Inner->OnClicked.AddUniqueDynamic(this, &UFCCCarModeButton::HandleClicked);
 		}
@@ -52,11 +60,11 @@ void UFCCCarModeButton::BuildTree()
 	}
 	else
 	{
-		mFallbackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+		UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 		mFallbackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		mFallbackButton->AddChild(mFallbackText);
-		mFallbackButton->OnClicked.AddUniqueDynamic(this, &UFCCCarModeButton::HandleClicked);
-		WidgetTree->RootWidget = mFallbackButton;
+		Button->AddChild(mFallbackText);
+		Button->OnClicked.AddUniqueDynamic(this, &UFCCCarModeButton::HandleClicked);
+		mFrame->AddChild(Button);
 	}
 	Refresh();
 }
@@ -77,6 +85,17 @@ void UFCCCarModeButton::Refresh()
 	else if (mFallbackText)
 	{
 		mFallbackText->SetText(Text);
+	}
+	if (mFrame)
+	{
+		if (FixedWidth > 0.f)
+		{
+			mFrame->SetWidthOverride(FixedWidth);
+		}
+		else
+		{
+			mFrame->ClearWidthOverride();
+		}
 	}
 }
 

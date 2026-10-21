@@ -6,13 +6,13 @@
 #include "UI/FCCWidgetUtils.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
+#include "Components/ScrollBox.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WrapBox.h"
-#include "Components/WrapBoxSlot.h"
 #include "FGFreightWagon.h"
-#include "FGRailroadSubsystem.h"
 #include "FGTrain.h"
 #include "TimerManager.h"
 
@@ -22,22 +22,14 @@ namespace
 {
 	constexpr float StopPanelPollInterval = 0.25f;
 
-	// Returns the freight cars of Train in order.
-	TArray<const AFGFreightWagon*> GetFreightCars(const AFGTrain* Train)
-	{
-		TArray<const AFGFreightWagon*> Cars;
-		if (Train)
-		{
-			for (AFGRailroadSubsystem::TConstTrainIterator It(Train->GetFirstVehicle()); It; ++It)
-			{
-				if (const AFGFreightWagon* Wagon = Cast<AFGFreightWagon>(*It))
-				{
-					Cars.Add(Wagon);
-				}
-			}
-		}
-		return Cars;
-	}
+	// Width of each car button, so the buttons form even columns.
+	constexpr float CarButtonWidth = 200.f;
+
+	// Gap between car buttons.
+	constexpr float CarButtonGap = 6.f;
+
+	// Tallest the car grid gets before it scrolls: about three rows of buttons, so long trains fit the window.
+	constexpr float MaxGridHeight = 180.f;
 }
 
 TSharedRef<SWidget> UFCCStopRulePanel::RebuildWidget()
@@ -56,28 +48,31 @@ void UFCCStopRulePanel::BuildTree()
 	{
 		return;
 	}
-	mRoot = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	WidgetTree->RootWidget = mRoot;
+	UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	WidgetTree->RootWidget = Root;
 
 	const FText Title = LOCTEXT("StopPanelTitle", "Freight cars at this stop");
-	if (UUserWidget* Label = FCCWidgetUtils::CreateMenuLabel(WidgetTree, Title))
-	{
-		mRoot->AddChildToVerticalBox(Label)->SetPadding(FMargin(0.f, 12.f, 0.f, 4.f));
-	}
-	else
+	UWidget* Label = FCCWidgetUtils::CreateMenuLabel(WidgetTree, Title);
+	if (!Label)
 	{
 		UTextBlock* TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		TitleText->SetText(Title);
-		mRoot->AddChildToVerticalBox(TitleText)->SetPadding(FMargin(0.f, 12.f, 0.f, 4.f));
+		Label = TitleText;
 	}
+	Root->AddChildToVerticalBox(Label)->SetPadding(FMargin(0.f, 12.f, 0.f, 4.f));
 
 	mHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	mHint->SetAutoWrapText(true);
-	mRoot->AddChildToVerticalBox(mHint)->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+	Root->AddChildToVerticalBox(mHint)->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
 
+	USizeBox* GridBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	GridBox->SetMaxDesiredHeight(MaxGridHeight);
+	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
 	mCars = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass());
-	mCars->SetInnerSlotPadding(FVector2D(6.f, 6.f));
-	mRoot->AddChildToVerticalBox(mCars);
+	mCars->SetInnerSlotPadding(FVector2D(CarButtonGap, CarButtonGap));
+	Scroll->AddChild(mCars);
+	GridBox->AddChild(Scroll);
+	Root->AddChildToVerticalBox(GridBox);
 }
 
 void UFCCStopRulePanel::NativeConstruct()
@@ -89,13 +84,14 @@ void UFCCStopRulePanel::NativeConstruct()
 	{
 		Discard->OnClicked.AddUniqueDynamic(this, &UFCCStopRulePanel::HandleDiscard);
 	}
+	mStationWidget.Reset();
+	mTrain.Reset();
+	mCarCount = INDEX_NONE;
+	Poll();
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(mPollTimer, this, &UFCCStopRulePanel::Poll, StopPanelPollInterval, true);
 	}
-	mStationWidget.Reset();
-	mCarCount = INDEX_NONE;
-	Poll();
 	UE_LOG(LogFreightCarControl, Log, TEXT("Stop settings panel shown in %s"), *GetNameSafe(Settings));
 }
 
@@ -110,64 +106,57 @@ void UFCCStopRulePanel::NativeDestruct()
 
 void UFCCStopRulePanel::Poll()
 {
-	UUserWidget* Settings = FCCWidgetUtils::GetOwningUserWidget(this);
-	UUserWidget* StationWidget = Cast<UUserWidget>(FCCWidgetUtils::GetObjectProperty(Settings, TEXT("mStationWidget")));
-	UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
-	AFGTrain* Train = Session ? Session->GetTrain() : nullptr;
-	const bool bSession = Session && Train && StationWidget;
-	const int32 CarCount = AFCCRuleSubsystem::GetFreightCarCount(Train);
-
-	if (bSession == bHasSession && StationWidget == mStationWidget.Get() && CarCount == mCarCount)
+	UUserWidget* StationWidget = Cast<UUserWidget>(FCCWidgetUtils::GetObjectProperty(FCCWidgetUtils::GetOwningUserWidget(this), TEXT("mStationWidget")));
+	const UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
+	AFGTrain* Train = Session && StationWidget ? Session->GetTrain() : nullptr;
+	const int32 CarCount = AFCCRuleSubsystem::GetFreightCars(Train).Num();
+	if (StationWidget == mStationWidget.Get() && Train == mTrain.Get() && CarCount == mCarCount)
 	{
 		return;
 	}
-	const bool bNewStop = StationWidget != mStationWidget.Get();
-	bHasSession = bSession;
-	mStationWidget = StationWidget;
-	mCarCount = CarCount;
-
-	if (!bSession)
-	{
-		mHint->SetText(LOCTEXT("StopPanelNoSession", "Freight car rules are set from a locomotive's timetable editor."));
-		RebuildButtons(0);
-		UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: no editor session (session %s, train %s, stop widget %s)"),
-			*GetNameSafe(Session), *GetNameSafe(Train), *GetNameSafe(StationWidget));
-		return;
-	}
-	if (bNewStop)
+	if (StationWidget != mStationWidget.Get() && Train)
 	{
 		mRule = Session->GetRule(StationWidget);
 		mRuleWhenOpened = mRule;
 	}
-	mHint->SetText(CarCount > 0
-		? LOCTEXT("StopPanelHint", "Click a car to change what it does here. Platform: use the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only.")
-		: LOCTEXT("StopPanelNoCars", "This train has no freight cars."));
-	RebuildButtons(CarCount);
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: %s, %d freight cars"), *GetNameSafe(StationWidget), CarCount);
+	mStationWidget = StationWidget;
+	mTrain = Train;
+	mCarCount = CarCount;
+
+	if (!Train)
+	{
+		mHint->SetText(LOCTEXT("StopPanelNoSession", "Freight car rules are set from a locomotive's timetable editor."));
+	}
+	else if (CarCount == 0)
+	{
+		mHint->SetText(LOCTEXT("StopPanelNoCars", "This train has no freight cars."));
+	}
+	else
+	{
+		mHint->SetText(LOCTEXT("StopPanelHint", "Click a car to change what it does here. Platform: the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only."));
+	}
+	RebuildButtons(Train);
+	UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: %s, train %s, %d freight cars"), *GetNameSafe(StationWidget), *GetNameSafe(Train), CarCount);
 }
 
-void UFCCStopRulePanel::RebuildButtons(int32 CarCount)
+void UFCCStopRulePanel::RebuildButtons(const AFGTrain* Train)
 {
 	mCars->ClearChildren();
-	mButtons.Reset();
-	UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
-	const TArray<const AFGFreightWagon*> Cars = GetFreightCars(Session ? Session->GetTrain() : nullptr);
-	for (int32 CarIndex = 0; CarIndex < CarCount; ++CarIndex)
+	const TArray<AFGFreightWagon*> Cars = AFCCRuleSubsystem::GetFreightCars(Train);
+	for (int32 CarIndex = 0; CarIndex < Cars.Num(); ++CarIndex)
 	{
 		UFCCCarModeButton* Button = CreateWidget<UFCCCarModeButton>(this, UFCCCarModeButton::StaticClass());
 		if (!Button)
 		{
 			continue;
 		}
-		const bool bFluid = Cars.IsValidIndex(CarIndex) && Cars[CarIndex]->GetFreightCargoType() == EFreightCargoType::FCT_Liquid;
+		const bool bFluid = Cars[CarIndex]->GetFreightCargoType() == EFreightCargoType::FCT_Liquid;
 		Button->Index = CarIndex;
-		Button->SetLabel(bFluid
-			? FText::Format(LOCTEXT("FluidCarLabel", "Car {0} (fluid)"), CarIndex + 1)
-			: FText::Format(LOCTEXT("CarLabel", "Car {0}"), CarIndex + 1));
+		Button->SetFixedWidth(CarButtonWidth);
+		Button->SetLabel(FText::Format(bFluid ? LOCTEXT("FluidCarLabel", "Car {0} (fluid)") : LOCTEXT("CarLabel", "Car {0}"), CarIndex + 1));
 		Button->SetMode(mRule.GetCarMode(CarIndex));
 		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked) { OnCarClicked(Clicked); };
 		mCars->AddChildToWrapBox(Button);
-		mButtons.Add(Button);
 	}
 }
 
@@ -183,13 +172,12 @@ void UFCCStopRulePanel::OnCarClicked(UFCCCarModeButton* Button)
 	mRule.Trim();
 	Button->SetMode(Mode);
 	Session->SetRule(mStationWidget.Get(), mRule);
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: car %d -> %s"), Button->Index + 1, *FCCCarMode::GetDisplayName(Mode).ToString());
 }
 
 void UFCCStopRulePanel::HandleDiscard()
 {
 	UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
-	if (Session && mStationWidget.IsValid())
+	if (Session && mStationWidget.IsValid() && !(mRule == mRuleWhenOpened))
 	{
 		Session->SetRule(mStationWidget.Get(), mRuleWhenOpened);
 	}

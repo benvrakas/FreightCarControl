@@ -7,13 +7,11 @@
 #include "FCCRuleSubsystem.generated.h"
 
 class AFGBuildableTrainPlatformCargo;
+class AFGFreightWagon;
 class AFGRailroadTimeTable;
 class AFGRailroadVehicle;
 class AFGTrain;
-class AFGTrainStationIdentifier;
 struct FTimeTableStop;
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FFCCOnRulesChanged);
 
 // Holds every train's per-stop freight car rules, saves them with the world and replicates them to clients.
 // Also tracks platforms whose load/unload setting is switched for a docked car, and puts them back.
@@ -31,12 +29,10 @@ public:
 	EFCCCarMode GetCarMode(const AFGRailroadTimeTable* TimeTable, int32 StopIndex, int32 CarIndex) const;
 
 	// Returns the rule of stop StopIndex of TimeTable (empty if none is stored).
-	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
 	FFCCStopRule GetStopRule(const AFGRailroadTimeTable* TimeTable, int32 StopIndex) const;
 
-	// Returns all stop rules of TimeTable, padded to its stop count.
-	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
-	TArray<FFCCStopRule> GetAllStopRules(const AFGRailroadTimeTable* TimeTable) const;
+	// Returns a number that changes whenever any rule changes, on the server and on clients; UI compares it to refresh.
+	uint32 GetRevision() const { return mRevision; }
 
 	// Server only. Sets one car's mode at one stop.
 	void SetCarMode(AFGRailroadTimeTable* TimeTable, int32 StopIndex, int32 CarIndex, EFCCCarMode Mode);
@@ -47,8 +43,9 @@ public:
 	// Server only. Replaces all stop rules of TimeTable.
 	void SetAllStopRules(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules);
 
-	// Server only. Applies Rules now if Train's timetable stops visit ExpectedStations in order, or when its stops next change to that.
-	void SetAllStopRulesWhenStopsMatch(AFGTrain* Train, const TArray<FFCCStopRule>& Rules, const TArray<AFGTrainStationIdentifier*>& ExpectedStations);
+	// Server only. Applies rules saved from the timetable editor, by position, once Train's timetable has one stop per
+	// rule; the editor's own save may still be on its way, or the train may not have a timetable yet.
+	void QueueEditorRules(AFGTrain* Train, const TArray<FFCCStopRule>& Rules);
 
 	// Server only. Inserts an empty rule at StopIndex after a stop was added there.
 	void NotifyStopInserted(AFGRailroadTimeTable* TimeTable, int32 StopIndex);
@@ -56,7 +53,8 @@ public:
 	// Server only. Drops the rule of a removed stop.
 	void NotifyStopRemoved(AFGRailroadTimeTable* TimeTable, int32 StopIndex);
 
-	// Server only. Re-aligns rules after TimeTable's stop list was replaced, matching stops by station and occurrence.
+	// Server only. Re-aligns rules after TimeTable's stop list was replaced: by station and occurrence, then by position
+	// for stops whose station changed (e.g. swapped by another mod).
 	void NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& OldStops, const TArray<FTimeTableStop>& NewStops);
 
 	// Server only. Switches Platform to bLoadMode for Vehicle's dock, remembering its own setting.
@@ -65,15 +63,11 @@ public:
 	// Server only. Puts Platform's own setting back if the mod switched it for a vehicle other than KeepForVehicle.
 	void EndPlatformOverride(AFGBuildableTrainPlatformCargo* Platform, const AFGRailroadVehicle* KeepForVehicle = nullptr);
 
+	// Returns the freight cars of Train in order from its first vehicle; rules index cars by this order.
+	static TArray<AFGFreightWagon*> GetFreightCars(const AFGTrain* Train);
+
 	// Returns the position of Vehicle among the freight cars of its train, or INDEX_NONE if it isn't a freight car.
 	static int32 GetFreightCarIndex(const AFGRailroadVehicle* Vehicle);
-
-	// Returns the number of freight cars in Train.
-	static int32 GetFreightCarCount(const AFGTrain* Train);
-
-	// Broadcast on server and clients whenever any rule changes.
-	UPROPERTY(BlueprintAssignable, Category = "FreightCarControl")
-	FFCCOnRulesChanged OnRulesChanged;
 
 	//~ Begin AActor
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -98,14 +92,14 @@ private:
 	// Removes entries whose time table is gone or that hold no rule; trims trailing empty stops.
 	void Compact();
 
-	// Marks the rules dirty for replication and notifies listeners.
+	// Bumps the revision and marks the rules for replication.
 	void RulesChanged(const TCHAR* Reason);
 
-	// Applies a pending client save for TimeTable if its stops now match.
-	void TryApplyPending(AFGRailroadTimeTable* TimeTable);
+	// Applies queued editor rules whose train's timetable now has the right number of stops, and drops stale ones.
+	void ProcessPendingRules();
 
-	// Restores platforms whose overridden dock has ended, and drops stale pending saves.
-	void SweepOverrides();
+	// Restores platforms whose overridden dock has ended, and processes pending editor rules.
+	void Sweep();
 
 	UFUNCTION()
 	void OnRep_Rules();
@@ -119,5 +113,6 @@ private:
 	UPROPERTY()
 	TArray<FFCCPendingRules> mPending;
 
+	uint32 mRevision = 0;
 	FTimerHandle mSweepTimer;
 };

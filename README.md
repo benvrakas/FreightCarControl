@@ -13,6 +13,11 @@ another and so on, even when every station has the same platforms.
 Set rules in a locomotive's timetable editor (each stop's settings get a "Freight cars at this stop" section) or in a
 freight car's menu. The `/fcc` chat command does the same, for testing.
 
-Status: early development, not yet tested in game.
+![Icon](Docs/Images/icon-512.png)
 
-See [Docs/Architecture.md](Docs/Architecture.md) and [Docs/Debugging.md](Docs/Debugging.md).
+- Mod page text and changelog: [Docs/Release](Docs/Release)
+- How it works: [Docs/Architecture.md](Docs/Architecture.md)
+- Logs, the `/fcc` command and a test checklist: [Docs/Debugging.md](Docs/Debugging.md)
+- Icon: `python Tools/make_icon.py`
+- Build: place the folder in the SML starter project's `Mods` folder and package it with Alpakit (Windows, Windows
+  server and Linux server targets)

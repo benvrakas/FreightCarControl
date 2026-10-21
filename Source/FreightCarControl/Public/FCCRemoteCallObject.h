@@ -7,22 +7,21 @@
 
 class AFGRailroadTimeTable;
 class AFGTrain;
-class AFGTrainStationIdentifier;
 
-// Carries a player's freight car rule edits to the server.
+// Carries a player's freight car rule edits to the server. Stops are identified by position, as everywhere in the mod.
 UCLASS(NotBlueprintable)
 class FREIGHTCARCONTROL_API UFCCRemoteCallObject : public UFGRemoteCallObject
 {
 	GENERATED_BODY()
 
 public:
-	// Sets the rule of one stop if that stop still visits ExpectedStation.
+	// Sets the rule of one stop.
 	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_SetStopRule(AFGRailroadTimeTable* TimeTable, int32 StopIndex, AFGTrainStationIdentifier* ExpectedStation, const FFCCStopRule& Rule);
+	void Server_SetStopRule(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule);
 
-	// Sets all stop rules once the timetable's stops visit ExpectedStations in order (sent right after a timetable save).
+	// Sets all stop rules of Train, sent right after the timetable editor saved its stops.
 	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_SetAllStopRules(AFGTrain* Train, const TArray<AFGTrainStationIdentifier*>& ExpectedStations, const TArray<FFCCStopRule>& Rules);
+	void Server_SetEditorRules(AFGTrain* Train, const TArray<FFCCStopRule>& Rules);
 
 	// Returns the local player's instance, or nullptr (logged) if the server doesn't run the mod.
 	static UFCCRemoteCallObject* GetLocal(const UObject* WorldContext);
