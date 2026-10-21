@@ -78,9 +78,17 @@ Clients edit through `UFCCRemoteCallObject`:
 
 - `Server_SetStopRule(timetable, stop, expected station, rule)`: one stop, ignored if that stop no longer visits the
   expected station. Used by the freight car menu.
-- `Server_SetAllStopRules(train, expected stations, rules)`: sent one tick after the timetable editor saves. The
-  server keeps it as pending until the train's timetable visits exactly those stations (the vanilla save RPC may
-  arrive first, and a new train has no timetable until then), applies it, and drops it after 30 s.
+- `Server_SetAllStopRules(train, stations, rules)`: sent one tick after the timetable editor saves, so it arrives after
+  the vanilla save RPC on the same channel. Applied by position once the train's timetable has as many stops as there
+  are rules (a new train has no timetable until the vanilla save creates it); kept pending until then and dropped
+  after 30 s. Stations aren't required to match: DynamicTimeTable hooks `SetStops` too and can swap a stop's station
+  within its group. A mismatch is only logged.
+
+The timetable editor recreates its stop widgets (for example after a stop's settings are saved), so the edit session
+keys edits by (station, occurrence of that station in the list) rather than by widget.
+
+When a train docks somewhere other than its current stop's station (manual docking, or DynamicTimeTable sending it to
+another station of the group), the current stop's car rules still apply, as the game does with its own stop rules.
 
 ## UI
 

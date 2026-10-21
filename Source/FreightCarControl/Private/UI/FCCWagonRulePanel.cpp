@@ -5,8 +5,10 @@
 #include "UI/FCCCarModeButton.h"
 #include "UI/FCCWidgetUtils.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/CanvasPanelSlot.h"
-#include "Components/TextBlock.h"
+#include "Components/Button.h"
+#include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
+#include "Components/SizeBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "FGFreightWagon.h"
@@ -20,6 +22,12 @@
 namespace
 {
 	constexpr float WagonPollInterval = 0.5f;
+
+	// Tallest the expanded stop list gets before it scrolls, so the inventory keeps its room.
+	constexpr float MaxListHeight = 160.f;
+
+	// Whether the stop list is open; kept across menus so it stays as the player left it.
+	bool GWagonPanelExpanded = false;
 }
 
 TSharedRef<SWidget> UFCCWagonRulePanel::RebuildWidget()
@@ -41,29 +49,31 @@ void UFCCWagonRulePanel::BuildTree()
 	mRoot = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	WidgetTree->RootWidget = mRoot;
 
-	const FText Title = LOCTEXT("WagonPanelTitle", "Timetable rules for this car");
-	if (UUserWidget* Label = FCCWidgetUtils::CreateMenuLabel(WidgetTree, Title))
+	mToggle = FCCWidgetUtils::CreateStandardButton(WidgetTree, LOCTEXT("WagonPanelToggle", "Timetable rules"));
+	if (mToggle)
 	{
-		mRoot->AddChildToVerticalBox(Label)->SetPadding(FMargin(0.f, 12.f, 0.f, 4.f));
+		mRoot->AddChildToVerticalBox(mToggle)->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
 	}
-	else
-	{
-		UTextBlock* TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		TitleText->SetText(Title);
-		mRoot->AddChildToVerticalBox(TitleText)->SetPadding(FMargin(0.f, 12.f, 0.f, 4.f));
-	}
-	mHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	mHint->SetAutoWrapText(true);
-	mRoot->AddChildToVerticalBox(mHint)->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
-	mRows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	mRoot->AddChildToVerticalBox(mRows);
+
+	mListBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	mListBox->SetMaxDesiredHeight(MaxListHeight);
+	mRows = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	mListBox->AddChild(mRows);
+	mRoot->AddChildToVerticalBox(mListBox)->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
 }
 
 void UFCCWagonRulePanel::NativeConstruct()
 {
 	Super::NativeConstruct();
-	UUserWidget* Menu = FCCWidgetUtils::GetOwningUserWidget(this);
-	FCCWidgetUtils::CopyTextStyle(mHint, Menu);
+	if (UButton* Inner = FCCWidgetUtils::GetInnerButton(mToggle))
+	{
+		Inner->OnClicked.AddUniqueDynamic(this, &UFCCWagonRulePanel::HandleToggle);
+	}
+	else
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Freight car panel: toggle button has no mButton; list stays open"));
+		GWagonPanelExpanded = true;
+	}
 	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this))
 	{
 		Subsystem->OnRulesChanged.AddUniqueDynamic(this, &UFCCWagonRulePanel::HandleRulesChanged);
@@ -74,7 +84,8 @@ void UFCCWagonRulePanel::NativeConstruct()
 	}
 	bDirty = true;
 	Poll();
-	UE_LOG(LogFreightCarControl, Log, TEXT("Freight car panel shown in %s for %s"), *GetNameSafe(Menu), *GetNameSafe(GetWagon()));
+	RefreshExpanded();
+	UE_LOG(LogFreightCarControl, Log, TEXT("Freight car panel shown in %s for %s"), *GetNameSafe(FCCWidgetUtils::GetOwningUserWidget(this)), *GetNameSafe(GetWagon()));
 }
 
 void UFCCWagonRulePanel::NativeDestruct()
@@ -93,6 +104,31 @@ void UFCCWagonRulePanel::NativeDestruct()
 AFGFreightWagon* UFCCWagonRulePanel::GetWagon() const
 {
 	return Cast<AFGFreightWagon>(FCCWidgetUtils::GetObjectProperty(FCCWidgetUtils::GetOwningUserWidget(this), TEXT("mInteractObject")));
+}
+
+void UFCCWagonRulePanel::HandleToggle()
+{
+	GWagonPanelExpanded = !GWagonPanelExpanded;
+	RefreshExpanded();
+}
+
+void UFCCWagonRulePanel::RefreshExpanded()
+{
+	const int32 StopCount = mShownStations.Num();
+	FText Text;
+	if (mShownCarIndex == INDEX_NONE || StopCount == 0)
+	{
+		Text = LOCTEXT("WagonToggleNoStops", "Timetable rules: no timetable");
+	}
+	else
+	{
+		Text = FText::Format(GWagonPanelExpanded
+				? LOCTEXT("WagonToggleOpen", "Hide timetable rules (car {0} of {1})")
+				: LOCTEXT("WagonToggleClosed", "Timetable rules (car {0} of {1}, {2} stops)"),
+			mShownCarIndex + 1, mShownCarCount, StopCount);
+	}
+	FCCWidgetUtils::SetWidgetText(mToggle, Text);
+	mListBox->SetVisibility(GWagonPanelExpanded && StopCount > 0 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 }
 
 void UFCCWagonRulePanel::HandleRulesChanged()
@@ -117,14 +153,17 @@ void UFCCWagonRulePanel::Poll()
 		}
 	}
 	const int32 CarIndex = AFCCRuleSubsystem::GetFreightCarIndex(Wagon);
-	if (!bDirty && Stations == mShownStations && CarIndex == mShownCarIndex)
+	const int32 CarCount = AFCCRuleSubsystem::GetFreightCarCount(Train);
+	if (!bDirty && Stations == mShownStations && CarIndex == mShownCarIndex && CarCount == mShownCarCount)
 	{
 		return;
 	}
 	bDirty = false;
 	mShownStations = Stations;
 	mShownCarIndex = CarIndex;
+	mShownCarCount = CarCount;
 	RebuildRows();
+	RefreshExpanded();
 }
 
 void UFCCWagonRulePanel::RebuildRows()
@@ -135,13 +174,10 @@ void UFCCWagonRulePanel::RebuildRows()
 	AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
 	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
 	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
-	if (!TimeTable || TimeTable->GetNumStops() == 0 || mShownCarIndex == INDEX_NONE || !Subsystem)
+	if (!TimeTable || mShownCarIndex == INDEX_NONE || !Subsystem)
 	{
-		mHint->SetText(LOCTEXT("WagonPanelNoTimeTable", "This car's train has no timetable stops."));
 		return;
 	}
-	mHint->SetText(FText::Format(LOCTEXT("WagonPanelHint", "Car {0} of {1}. Click a stop to change what this car does there."),
-		mShownCarIndex + 1, AFCCRuleSubsystem::GetFreightCarCount(Train)));
 	for (int32 StopIndex = 0; StopIndex < TimeTable->GetNumStops(); ++StopIndex)
 	{
 		const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
@@ -151,11 +187,15 @@ void UFCCWagonRulePanel::RebuildRows()
 			continue;
 		}
 		Button->Index = StopIndex;
+		Button->bModeFirst = true;
 		Button->SetLabel(FText::Format(LOCTEXT("StopLabel", "{0}. {1}"), StopIndex + 1,
 			Stop.Station ? Stop.Station->GetStationName() : LOCTEXT("UnknownStation", "?")));
 		Button->SetMode(Subsystem->GetCarMode(TimeTable, StopIndex, mShownCarIndex));
 		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked) { OnStopClicked(Clicked); };
-		mRows->AddChildToVerticalBox(Button)->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		if (UScrollBoxSlot* RowSlot = Cast<UScrollBoxSlot>(mRows->AddChild(Button)))
+		{
+			RowSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
 		mButtons.Add(Button);
 	}
 }

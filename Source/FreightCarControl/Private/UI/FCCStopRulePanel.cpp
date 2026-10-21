@@ -84,7 +84,7 @@ void UFCCStopRulePanel::NativeConstruct()
 {
 	Super::NativeConstruct();
 	UUserWidget* Settings = FCCWidgetUtils::GetOwningUserWidget(this);
-	FCCWidgetUtils::CopyTextStyle(mHint, Settings, TEXT("mLoadText"));
+	FCCWidgetUtils::CopyTextStyle(mHint, Settings, TEXT("mLoadText"), 12);
 	if (UButton* Discard = FCCWidgetUtils::GetInnerButton(Cast<UUserWidget>(FCCWidgetUtils::GetObjectProperty(Settings, TEXT("mDiscard")))))
 	{
 		Discard->OnClicked.AddUniqueDynamic(this, &UFCCStopRulePanel::HandleDiscard);

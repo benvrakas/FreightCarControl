@@ -114,15 +114,11 @@ EFCCCarMode FFCCDockingHook::ResolveMode(AFGBuildableTrainPlatformCargo* Platfor
 	const int32 StopIndex = TimeTable->GetCurrentStop();
 	const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
 	const bool bLog = ShouldLogDecision(Platform, Vehicle, StopIndex);
-	if (Stop.Station != Station->GetStationIdentifier())
+	if (Stop.Station != Station->GetStationIdentifier() && bLog)
 	{
-		if (bLog)
-		{
-			UE_LOG(LogFreightCarControl, Verbose, TEXT("%s: %s docked at %s, which isn't its current stop %d (%s); car rules not applied"),
-				*GetNameSafe(Platform), *Train->GetTrainName().ToString(), *GetNameSafe(Station), StopIndex,
-				Stop.Station ? *Stop.Station->GetStationName().ToString() : TEXT("none"));
-		}
-		return EFCCCarMode::Platform;
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s docked at %s while its current stop %d is %s; applying that stop's car rules, as the game does with its own stop rules"),
+			*Train->GetTrainName().ToString(), Station->GetStationIdentifier() ? *Station->GetStationIdentifier()->GetStationName().ToString() : TEXT("?"),
+			StopIndex + 1, Stop.Station ? *Stop.Station->GetStationName().ToString() : TEXT("none"));
 	}
 
 	const int32 CarIndex = AFCCRuleSubsystem::GetFreightCarIndex(Vehicle);
@@ -140,7 +136,7 @@ EFCCCarMode FFCCDockingHook::ResolveMode(AFGBuildableTrainPlatformCargo* Platfor
 	if (bLog)
 	{
 		UE_LOG(LogFreightCarControl, Log, TEXT("%s at %s (stop %d): car %d -> %s, by %s (%s, set to %s)"),
-			*Train->GetTrainName().ToString(), *Stop.Station->GetStationName().ToString(), StopIndex + 1, CarIndex + 1,
+			*Train->GetTrainName().ToString(), Station->GetStationIdentifier() ? *Station->GetStationIdentifier()->GetStationName().ToString() : TEXT("?"), StopIndex + 1, CarIndex + 1,
 			*FCCCarMode::GetDisplayName(Mode).ToString(), *GetNameSafe(Platform), *GetNameSafe(Platform->GetClass()),
 			Platform->GetIsInLoadMode() ? TEXT("load") : TEXT("unload"));
 	}

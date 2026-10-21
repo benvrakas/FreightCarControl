@@ -266,15 +266,16 @@ void AFCCRuleSubsystem::TryApplyPending(AFGRailroadTimeTable* TimeTable)
 	{
 		Expected.Add(Station);
 	}
-	if (Current != Expected)
+	if (Current.Num() != mPending[Index].Rules.Num())
 	{
-		UE_LOG(LogFreightCarControl, Verbose, TEXT("%s: pending rules expect %d stops, timetable has %d different ones"),
-			*DescribeTimeTable(TimeTable), Expected.Num(), Current.Num());
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s: rules from the timetable editor are for %d stops, timetable has %d; waiting"),
+			*DescribeTimeTable(TimeTable), mPending[Index].Rules.Num(), Current.Num());
 		return;
 	}
 	const FFCCPendingRules Pending = mPending[Index];
 	mPending.RemoveAt(Index);
-	UE_LOG(LogFreightCarControl, Log, TEXT("%s: applying rules saved from the timetable editor"), *DescribeTimeTable(TimeTable));
+	UE_LOG(LogFreightCarControl, Log, TEXT("%s: applying rules saved from the timetable editor%s"), *DescribeTimeTable(TimeTable),
+		Current == Expected ? TEXT("") : TEXT(" (some stops' stations differ from the editor's, e.g. changed by another mod; matched by position)"));
 	SetAllStopRules(TimeTable, Pending.Rules);
 }
 

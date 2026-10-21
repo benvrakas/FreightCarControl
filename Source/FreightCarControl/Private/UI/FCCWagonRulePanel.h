@@ -6,11 +6,12 @@
 
 class AFGFreightWagon;
 class UFCCCarModeButton;
-class UTextBlock;
+class UScrollBox;
+class USizeBox;
 class UVerticalBox;
 
-// "Timetable rules" section added to the vanilla freight car menu (Widget_FreightWagon). Lists the train's stops with
-// this car's mode at each; a click cycles the mode and saves it straight away.
+// "Timetable rules" section added to the vanilla freight car menu (Widget_FreightWagon). A single button that expands a
+// short scrolling list of the train's stops with this car's mode at each; a click cycles the mode and saves it.
 UCLASS()
 class UFCCWagonRulePanel : public UUserWidget
 {
@@ -32,7 +33,13 @@ private:
 
 	void RebuildRows();
 
+	// Updates the toggle button text and the list visibility from bExpanded.
+	void RefreshExpanded();
+
 	void OnStopClicked(UFCCCarModeButton* Button);
+
+	UFUNCTION()
+	void HandleToggle();
 
 	UFUNCTION()
 	void HandleRulesChanged();
@@ -41,10 +48,13 @@ private:
 	TObjectPtr<UVerticalBox> mRoot;
 
 	UPROPERTY()
-	TObjectPtr<UTextBlock> mHint;
+	TObjectPtr<UUserWidget> mToggle;
 
 	UPROPERTY()
-	TObjectPtr<UVerticalBox> mRows;
+	TObjectPtr<USizeBox> mListBox;
+
+	UPROPERTY()
+	TObjectPtr<UScrollBox> mRows;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UFCCCarModeButton>> mButtons;
@@ -52,6 +62,7 @@ private:
 	// Stations of the train's stops and car index when the rows were built; a change triggers a rebuild.
 	TArray<TWeakObjectPtr<UObject>> mShownStations;
 	int32 mShownCarIndex = INDEX_NONE;
+	int32 mShownCarCount = 0;
 	bool bDirty = true;
 	FTimerHandle mPollTimer;
 };

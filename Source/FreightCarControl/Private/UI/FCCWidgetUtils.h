@@ -50,8 +50,9 @@ namespace FCCWidgetUtils
 	// Returns all widgets of Root's tree and nested user widget trees whose class name is ClassName, in panel order.
 	TArray<UUserWidget*> FindNestedWidgetsByClassName(UUserWidget* Root, const TCHAR* ClassName);
 
-	// Copies font and colour from the TextBlock named SourceName in Root's tree (or the first TextBlock found) to Target.
-	void CopyTextStyle(UTextBlock* Target, UUserWidget* Root, FName SourceName = NAME_None);
+	// Copies font and colour from the TextBlock named SourceName in Root's tree (or the first TextBlock found) to Target,
+	// limiting the font size to MaxSize when it is above 0.
+	void CopyTextStyle(UTextBlock* Target, UUserWidget* Root, FName SourceName = NAME_None, int32 MaxSize = 0);
 
 	// Returns the nearest user widget that owns Widget, skipping Widget itself.
 	UUserWidget* GetOwningUserWidget(const UWidget* Widget);

@@ -191,7 +191,7 @@ TArray<UUserWidget*> FCCWidgetUtils::FindNestedWidgetsByClassName(UUserWidget* R
 	return Found;
 }
 
-void FCCWidgetUtils::CopyTextStyle(UTextBlock* Target, UUserWidget* Root, FName SourceName)
+void FCCWidgetUtils::CopyTextStyle(UTextBlock* Target, UUserWidget* Root, FName SourceName, int32 MaxSize)
 {
 	if (!Target || !Root || !Root->WidgetTree)
 	{
@@ -210,8 +210,19 @@ void FCCWidgetUtils::CopyTextStyle(UTextBlock* Target, UUserWidget* Root, FName 
 	}
 	if (Source)
 	{
-		Target->SetFont(Source->GetFont());
+		FSlateFontInfo Font = Source->GetFont();
+		if (MaxSize > 0 && Font.Size > MaxSize)
+		{
+			Font.Size = MaxSize;
+		}
+		Target->SetFont(Font);
 		Target->SetColorAndOpacity(Source->GetColorAndOpacity());
+	}
+	else if (MaxSize > 0)
+	{
+		FSlateFontInfo Font = Target->GetFont();
+		Font.Size = FMath::Min<float>(Font.Size, MaxSize);
+		Target->SetFont(Font);
 	}
 }
 

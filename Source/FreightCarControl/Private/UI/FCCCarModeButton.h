@@ -29,6 +29,9 @@ public:
 	// Free value for the owner, e.g. the car or stop index.
 	int32 Index = INDEX_NONE;
 
+	// Shows "Mode | Label" instead of "Label: Mode", so the mode stays visible when a long label is cut off.
+	bool bModeFirst = false;
+
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 

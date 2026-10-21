@@ -63,9 +63,13 @@ void UFCCCarModeButton::BuildTree()
 
 void UFCCCarModeButton::Refresh()
 {
-	const FText Text = Label.IsEmpty()
-		? FCCCarMode::GetDisplayName(Mode)
-		: FText::Format(LOCTEXT("CarButton", "{0}: {1}"), Label, FCCCarMode::GetDisplayName(Mode));
+	FText Text = FCCCarMode::GetDisplayName(Mode);
+	if (!Label.IsEmpty())
+	{
+		Text = bModeFirst
+			? FText::Format(LOCTEXT("CarButtonModeFirst", "{1}  |  {0}"), Label, Text)
+			: FText::Format(LOCTEXT("CarButton", "{0}: {1}"), Label, Text);
+	}
 	if (mVanillaButton)
 	{
 		FCCWidgetUtils::SetWidgetText(mVanillaButton, Text);

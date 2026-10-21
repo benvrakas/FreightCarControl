@@ -16,8 +16,10 @@ namespace
 {
 	TWeakObjectPtr<UFCCTimeTableEditSession> GActiveSession;
 
-	// Seconds between checks for newly listed stops.
-	constexpr float SessionPollInterval = 0.25f;
+	FString DescribeStation(const AFGTrainStationIdentifier* Station)
+	{
+		return Station ? Station->GetStationName().ToString() : FString(TEXT("(none)"));
+	}
 }
 
 UFCCTimeTableEditSession* UFCCTimeTableEditSession::GetActive()
@@ -46,6 +48,7 @@ void UFCCTimeTableEditSession::NativeConstruct()
 {
 	Super::NativeConstruct();
 	GActiveSession = this;
+	mEdits.Reset();
 	UUserWidget* Setup = GetSetup();
 	bBoundSave = FCCWidgetUtils::BindEventDispatcher(Setup, TEXT("OnSave"), this, GET_FUNCTION_NAME_CHECKED(UFCCTimeTableEditSession, HandleSave));
 	if (!bBoundSave)
@@ -57,10 +60,6 @@ void UFCCTimeTableEditSession::NativeConstruct()
 		}
 	}
 	bBoundDiscard = FCCWidgetUtils::BindEventDispatcher(Setup, TEXT("OnDiscard"), this, GET_FUNCTION_NAME_CHECKED(UFCCTimeTableEditSession, HandleDiscard));
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().SetTimer(mPollTimer, this, &UFCCTimeTableEditSession::Poll, SessionPollInterval, true);
-	}
 	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable editor session started on %s (save hook: %s, discard hook: %s, train: %s)"),
 		*GetNameSafe(Setup), bBoundSave ? TEXT("yes") : TEXT("NO"), bBoundDiscard ? TEXT("yes") : TEXT("no"), *GetNameSafe(GetTrain()));
 	if (!bBoundSave)
@@ -71,10 +70,6 @@ void UFCCTimeTableEditSession::NativeConstruct()
 
 void UFCCTimeTableEditSession::NativeDestruct()
 {
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(mPollTimer);
-	}
 	UUserWidget* Setup = GetSetup();
 	FCCWidgetUtils::UnbindEventDispatcher(Setup, TEXT("OnSave"), this, GET_FUNCTION_NAME_CHECKED(UFCCTimeTableEditSession, HandleSave));
 	FCCWidgetUtils::UnbindEventDispatcher(Setup, TEXT("OnDiscard"), this, GET_FUNCTION_NAME_CHECKED(UFCCTimeTableEditSession, HandleDiscard));
@@ -82,7 +77,6 @@ void UFCCTimeTableEditSession::NativeDestruct()
 	{
 		GActiveSession.Reset();
 	}
-	mRules.Reset();
 	Super::NativeDestruct();
 }
 
@@ -123,90 +117,99 @@ TArray<UUserWidget*> UFCCTimeTableEditSession::GetStationWidgets() const
 {
 	UUserWidget* Setup = GetSetup();
 	UUserWidget* List = Cast<UUserWidget>(FCCWidgetUtils::GetObjectProperty(Setup, TEXT("mCurrentTimeTable")));
+	if (!List)
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Timetable editor: mCurrentTimeTable not found, searching the whole editor"));
+	}
 	return FCCWidgetUtils::FindNestedWidgetsByClassName(List ? List : Setup, FCCWidgetUtils::SetupStationClassName);
 }
 
-void UFCCTimeTableEditSession::Poll()
+UFCCTimeTableEditSession::FStopKey UFCCTimeTableEditSession::GetKey(UUserWidget* StationWidget) const
+{
+	const AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(StationWidget);
+	int32 Occurrence = 0;
+	bool bFound = false;
+	for (UUserWidget* Widget : GetStationWidgets())
+	{
+		if (Widget == StationWidget)
+		{
+			bFound = true;
+			break;
+		}
+		Occurrence += FCCWidgetUtils::GetSetupStationStation(Widget) == Station ? 1 : 0;
+	}
+	if (!bFound)
+	{
+		UE_LOG(LogFreightCarControl, Verbose, TEXT("Timetable editor: %s isn't in the timetable list; using the first stop at %s"),
+			*GetNameSafe(StationWidget), *DescribeStation(Station));
+		Occurrence = 0;
+	}
+	return FStopKey(Station, Occurrence);
+}
+
+FFCCStopRule UFCCTimeTableEditSession::GetServerRule(const FStopKey& Key) const
 {
 	AFGTrain* Train = GetTrain();
 	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
 	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
-	TArray<FTimeTableStop> ServerStops;
-	if (TimeTable)
+	if (!TimeTable || !Subsystem)
 	{
-		TimeTable->GetStops(ServerStops);
+		return FFCCStopRule();
 	}
-	const TArray<UUserWidget*> Widgets = GetStationWidgets();
-	TMap<const AFGTrainStationIdentifier*, int32> Occurrence;
-	int32 Added = 0;
-	for (UUserWidget* Widget : Widgets)
+	TArray<FTimeTableStop> Stops;
+	TimeTable->GetStops(Stops);
+	int32 Seen = 0;
+	for (int32 StopIndex = 0; StopIndex < Stops.Num(); ++StopIndex)
 	{
-		const AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(Widget);
-		const int32 Nth = Occurrence.FindOrAdd(Station)++;
-		if (mRules.Contains(Widget))
+		if (Stops[StopIndex].Station == Key.Key && Seen++ == Key.Value)
 		{
-			continue;
-		}
-		FFCCStopRule Rule;
-		int32 Seen = 0;
-		for (int32 StopIndex = 0; StopIndex < ServerStops.Num(); ++StopIndex)
-		{
-			if (ServerStops[StopIndex].Station == Station && Seen++ == Nth)
-			{
-				Rule = Subsystem ? Subsystem->GetStopRule(TimeTable, StopIndex) : FFCCStopRule();
-				break;
-			}
-		}
-		mRules.Add(Widget, Rule);
-		++Added;
-	}
-	if (Added > 0)
-	{
-		UE_LOG(LogFreightCarControl, Verbose, TEXT("Timetable editor: %d stop widgets listed, %d new"), Widgets.Num(), Added);
-	}
-	for (auto It = mRules.CreateIterator(); It; ++It)
-	{
-		if (!It.Key().IsValid())
-		{
-			It.RemoveCurrent();
+			return Subsystem->GetStopRule(TimeTable, StopIndex);
 		}
 	}
+	return FFCCStopRule();
 }
 
-FFCCStopRule UFCCTimeTableEditSession::GetRule(UUserWidget* StationWidget)
+FFCCStopRule UFCCTimeTableEditSession::GetRule(UUserWidget* StationWidget) const
 {
-	if (!mRules.Contains(StationWidget))
+	const FStopKey Key = GetKey(StationWidget);
+	if (const FFCCStopRule* Edited = mEdits.Find(Key))
 	{
-		Poll();
+		return *Edited;
 	}
-	const FFCCStopRule* Rule = mRules.Find(StationWidget);
-	return Rule ? *Rule : FFCCStopRule();
+	return GetServerRule(Key);
 }
 
 void UFCCTimeTableEditSession::SetRule(UUserWidget* StationWidget, const FFCCStopRule& Rule)
 {
-	if (StationWidget)
-	{
-		mRules.Add(StationWidget, Rule);
-	}
+	const FStopKey Key = GetKey(StationWidget);
+	mEdits.Add(Key, Rule);
+	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable editor: stop %s #%d edited (%d edited stops)"), *DescribeStation(Key.Key), Key.Value + 1, mEdits.Num());
 }
 
 void UFCCTimeTableEditSession::HandleSave()
 {
-	Poll();
 	AFGTrain* Train = GetTrain();
 	TArray<AFGTrainStationIdentifier*> Stations;
 	TArray<FFCCStopRule> Rules;
-	bool bAnyRule = false;
+	TMap<const AFGTrainStationIdentifier*, int32> Occurrences;
+	FString Summary;
 	for (UUserWidget* Widget : GetStationWidgets())
 	{
-		Stations.Add(FCCWidgetUtils::GetSetupStationStation(Widget));
-		const FFCCStopRule* Rule = mRules.Find(Widget);
-		Rules.Add(Rule ? *Rule : FFCCStopRule());
-		bAnyRule |= Rule && !Rule->IsDefault();
+		AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(Widget);
+		const FStopKey Key(Station, Occurrences.FindOrAdd(Station)++);
+		const FFCCStopRule* Edited = mEdits.Find(Key);
+		const FFCCStopRule Rule = Edited ? *Edited : GetServerRule(Key);
+		Stations.Add(Station);
+		Rules.Add(Rule);
+		FString Codes;
+		for (const EFCCCarMode Mode : Rule.Cars)
+		{
+			Codes += FCCCarMode::GetCode(Mode);
+		}
+		Summary += FString::Printf(TEXT(" [%s: %s]"), *DescribeStation(Station), *Codes);
 	}
-	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable saved for %s: sending car rules for %d stops (any set: %s)"),
-		*GetNameSafe(Train), Rules.Num(), bAnyRule ? TEXT("yes") : TEXT("no"));
+	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable saved for %s: sending car rules for %d stops (%d edited):%s"),
+		*GetNameSafe(Train), Rules.Num(), mEdits.Num(), *Summary);
 	if (!Train)
 	{
 		UE_LOG(LogFreightCarControl, Warning, TEXT("Timetable editor has no train; car rules not sent"));
@@ -231,10 +234,11 @@ void UFCCTimeTableEditSession::HandleSave()
 	{
 		Send();
 	}
+	mEdits.Reset();
 }
 
 void UFCCTimeTableEditSession::HandleDiscard()
 {
-	UE_LOG(LogFreightCarControl, Verbose, TEXT("Timetable editor discarded; car rule edits dropped"));
-	mRules.Reset();
+	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable editor discarded; %d car rule edits dropped"), mEdits.Num());
+	mEdits.Reset();
 }
