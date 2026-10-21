@@ -4,7 +4,7 @@ Text for the Freight Car Control page on ficsit.app (Satisfactory Mod Repository
 - "Full description" field: everything under FULL DESCRIPTION.
 - The two transparency fields: the text under NETWORK ACTIVITY TRANSPARENCY and AI USAGE TRANSPARENCY.
 - Logo: Docs/Images/icon-1080.png (full resolution; icon-512.png is the same image smaller).
-Replace the [bracketed] placeholders before publishing.
+Replace the [bracketed] placeholder before publishing.
 -->
 
 # SHORT DESCRIPTION
@@ -30,7 +30,7 @@ Freight Car Control adds a rule per car, per timetable stop:
 
 Rules belong to the train, so other trains using the same stations aren't affected.
 
-![Freight car rules in the timetable editor]([screenshot URL])
+![Freight car rules in a timetable stop's settings](https://raw.githubusercontent.com/benvrakas/FreightCarControl/main/Docs/Images/stop-settings.png)
 
 ### Where to set rules
 
@@ -41,6 +41,8 @@ Rules belong to the train, so other trains using the same stations aren't affect
   train. Clicks save straight away.
 
 Cars are numbered from the train's first vehicle, counting freight cars only; fluid cars are marked.
+
+![The Timetable rules list in a freight car's menu](https://raw.githubusercontent.com/benvrakas/FreightCarControl/main/Docs/Images/freight-car-menu.png)
 
 ### Works with
 
