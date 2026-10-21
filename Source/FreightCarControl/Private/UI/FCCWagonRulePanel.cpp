@@ -64,10 +64,6 @@ void UFCCWagonRulePanel::NativeConstruct()
 	Super::NativeConstruct();
 	UUserWidget* Menu = FCCWidgetUtils::GetOwningUserWidget(this);
 	FCCWidgetUtils::CopyTextStyle(mHint, Menu);
-	if (UVerticalBoxSlot* VerticalSlot = Cast<UVerticalBoxSlot>(Slot))
-	{
-		VerticalSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
-	}
 	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this))
 	{
 		Subsystem->OnRulesChanged.AddUniqueDynamic(this, &UFCCWagonRulePanel::HandleRulesChanged);

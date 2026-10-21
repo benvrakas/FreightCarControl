@@ -85,11 +85,6 @@ void UFCCStopRulePanel::NativeConstruct()
 	Super::NativeConstruct();
 	UUserWidget* Settings = FCCWidgetUtils::GetOwningUserWidget(this);
 	FCCWidgetUtils::CopyTextStyle(mHint, Settings, TEXT("mLoadText"));
-	if (UVerticalBoxSlot* VerticalSlot = Cast<UVerticalBoxSlot>(Slot))
-	{
-		VerticalSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
-		VerticalSlot->SetHorizontalAlignment(HAlign_Fill);
-	}
 	if (UButton* Discard = FCCWidgetUtils::GetInnerButton(Cast<UUserWidget>(FCCWidgetUtils::GetObjectProperty(Settings, TEXT("mDiscard")))))
 	{
 		Discard->OnClicked.AddUniqueDynamic(this, &UFCCStopRulePanel::HandleDiscard);

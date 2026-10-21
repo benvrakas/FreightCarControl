@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/SizeBox.h"
 #include "FGRailroadTimeTable.h"
+#include "FGRailroadVehicle.h"
 #include "FGTrain.h"
 #include "FGTrainStationIdentifier.h"
 #include "TimerManager.h"
@@ -97,8 +98,25 @@ AFGTrain* UFCCTimeTableEditSession::GetTrain() const
 	{
 		return Train;
 	}
-	AFGRailroadTimeTable* TimeTable = Cast<AFGRailroadTimeTable>(FCCWidgetUtils::GetObjectProperty(Setup, TEXT("mTimeTable")));
-	return TimeTable ? Cast<AFGTrain>(TimeTable->GetOwner()) : nullptr;
+	if (AFGRailroadTimeTable* TimeTable = Cast<AFGRailroadTimeTable>(FCCWidgetUtils::GetObjectProperty(Setup, TEXT("mTimeTable"))))
+	{
+		if (AFGTrain* Train = Cast<AFGTrain>(TimeTable->GetOwner()))
+		{
+			return Train;
+		}
+	}
+	for (UUserWidget* Menu = FCCWidgetUtils::GetOwningUserWidget(Setup); Menu; Menu = FCCWidgetUtils::GetOwningUserWidget(Menu))
+	{
+		if (AFGTrain* Train = Cast<AFGTrain>(FCCWidgetUtils::GetObjectProperty(Menu, TEXT("mTrain"))))
+		{
+			return Train;
+		}
+		if (AFGRailroadVehicle* Vehicle = Cast<AFGRailroadVehicle>(FCCWidgetUtils::GetObjectProperty(Menu, TEXT("mInteractObject"))))
+		{
+			return Vehicle->GetTrain();
+		}
+	}
+	return nullptr;
 }
 
 TArray<UUserWidget*> UFCCTimeTableEditSession::GetStationWidgets() const
