@@ -30,9 +30,12 @@ Found by disassembling the shipped `FactoryGame` DLL with its PDB.
 ## Enforcement
 
 `FFCCDockingHook` wraps `EvaluateRuleSet` (private; reached through an access-transformer `Friend`). It looks up
-platform → docked vehicle → train → timetable → current stop, checks that stop's station is the station the platform
-belongs to (manual docking elsewhere is left vanilla), finds the car's freight car index and its mode. Runs on the
-server only, and again on every docking sequence update.
+platform → docked vehicle → train → timetable → docked stop, finds the car's freight car index and its mode. Runs on
+the server only, and again on every docking sequence update.
+
+`AFGTrain::Dock` calls `IncrementCurrentStop` before `StartDocking`, so while docked the timetable's current stop is
+already the next one. The docked stop is the one before it (wrapping to the last), exactly as
+`AFGTrain::GetDockingRuleSetForCurrentStop` computes it.
 
 ### Skip
 
@@ -110,7 +113,14 @@ Hooks (vanilla widget → panel → mod widget):
   train (fluid cars labelled); each click cycles Platform → Skip → Load → Unload. The settings' Discard button
   reverts the panel's edits.
 - `Widget_FreightWagon` → `VerticalBox_0` (solid car layout) and `CanvasPanel_0` (fluid car layout, pinned to the
-  bottom) → `UFCCWagonRulePanel`. Lists the train's stops with this car's mode; a click saves straight away.
+  bottom) → `UFCCWagonRulePanel`. A toggle button that opens a short scrolling list of the train's stops with this
+  car's mode; a click saves straight away. One tick after construction it grows the window to fit: the solid layout is
+  a fixed 703×568 `mSolidInventoryContainer` (max width 680) with the inventory column `VerticalBox_0` at a fixed canvas
+  size, the fluid layout a 611×486 canvas without an override. Closed: 60 px taller. Open: also 280 px wider and tall
+  enough for the list. The Take All / Store All buttons are anchored right and move with the edge.
+
+`FindNestedWidgetsByClassName` removes duplicates: content of a named slot is reached both from the owner's widget
+tree and from the slot widget's own tree.
 
 SML's generic slot setup dereferences a horizontal-box slot when the parent is a vertical box, so the mod passes no
 slot setup for vertical boxes and sets its own padding in `NativeConstruct`.

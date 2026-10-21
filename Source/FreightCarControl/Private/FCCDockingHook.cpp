@@ -111,12 +111,19 @@ EFCCCarMode FFCCDockingHook::ResolveMode(AFGBuildableTrainPlatformCargo* Platfor
 		return EFCCCarMode::Platform;
 	}
 
-	const int32 StopIndex = TimeTable->GetCurrentStop();
+	// The train advances its current stop before docking; the docked stop is the one before it, as in
+	// AFGTrain::GetDockingRuleSetForCurrentStop.
+	const int32 CurrentStop = TimeTable->GetCurrentStop();
+	const int32 StopIndex = (CurrentStop == 0 ? TimeTable->GetNumStops() : CurrentStop) - 1;
 	const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
 	const bool bLog = ShouldLogDecision(Platform, Vehicle, StopIndex);
+	if (StopIndex < 0)
+	{
+		return EFCCCarMode::Platform;
+	}
 	if (Stop.Station != Station->GetStationIdentifier() && bLog)
 	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s docked at %s while its current stop %d is %s; applying that stop's car rules, as the game does with its own stop rules"),
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s docked at %s for stop %d (%s); applying that stop's car rules, as the game does with its own stop rules"),
 			*Train->GetTrainName().ToString(), Station->GetStationIdentifier() ? *Station->GetStationIdentifier()->GetStationName().ToString() : TEXT("?"),
 			StopIndex + 1, Stop.Station ? *Stop.Station->GetStationName().ToString() : TEXT("none"));
 	}

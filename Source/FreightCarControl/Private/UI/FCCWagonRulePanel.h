@@ -36,6 +36,12 @@ private:
 	// Updates the toggle button text and the list visibility from bExpanded.
 	void RefreshExpanded();
 
+	// Remembers the vanilla sizes of the freight car window parts this panel resizes.
+	void CaptureVanillaLayout();
+
+	// Grows the freight car window to fit the panel (wider while the stop list is open), or restores it.
+	void ApplyWindowLayout();
+
 	void OnStopClicked(UFCCCarModeButton* Button);
 
 	UFUNCTION()
@@ -65,4 +71,14 @@ private:
 	int32 mShownCarCount = 0;
 	bool bDirty = true;
 	FTimerHandle mPollTimer;
+
+	// Vanilla layout of the window part this panel sits in, captured one tick after construction.
+	TWeakObjectPtr<USizeBox> mContainer;
+	TWeakObjectPtr<class UCanvasPanelSlot> mColumnSlot;
+	FVector2D mContainerSize = FVector2D::ZeroVector;
+	float mContainerMaxWidth = 0.f;
+	bool bContainerHadOverride = false;
+	FMargin mColumnOffsets;
+	bool bFluidLayout = false;
+	bool bLayoutCaptured = false;
 };

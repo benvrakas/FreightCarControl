@@ -178,7 +178,8 @@ TArray<UUserWidget*> FCCWidgetUtils::FindNestedWidgetsByClassName(UUserWidget* R
 			{
 				if (AsUser->GetClass()->GetName() == ClassName)
 				{
-					Found.Add(AsUser);
+					// Named slot content is reached both from the owner's tree and the slot widget's own tree.
+					Found.AddUnique(AsUser);
 				}
 				else
 				{

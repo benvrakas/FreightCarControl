@@ -6,6 +6,7 @@
 #include "UI/FCCWidgetUtils.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/ScrollBox.h"
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
@@ -28,6 +29,13 @@ namespace
 
 	// Whether the stop list is open; kept across menus so it stays as the player left it.
 	bool GWagonPanelExpanded = false;
+
+	// Extra window size while the stop list is closed (room for the toggle button) and open (room for the list).
+	const FVector2D ExtraSizeClosed(0.f, 60.f);
+	const FVector2D ExtraSizeOpen(280.f, 60.f + MaxListHeight + 10.f);
+
+	// Size of the vanilla fluid car layout, which has no size override of its own (its background image's size).
+	const FVector2D FluidLayoutSize(611.f, 486.f);
 }
 
 TSharedRef<SWidget> UFCCWagonRulePanel::RebuildWidget()
@@ -83,8 +91,17 @@ void UFCCWagonRulePanel::NativeConstruct()
 		World->GetTimerManager().SetTimer(mPollTimer, this, &UFCCWagonRulePanel::Poll, WagonPollInterval, true);
 	}
 	bDirty = true;
+	bLayoutCaptured = false;
 	Poll();
 	RefreshExpanded();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			CaptureVanillaLayout();
+			ApplyWindowLayout();
+		}));
+	}
 	UE_LOG(LogFreightCarControl, Log, TEXT("Freight car panel shown in %s for %s"), *GetNameSafe(FCCWidgetUtils::GetOwningUserWidget(this)), *GetNameSafe(GetWagon()));
 }
 
@@ -94,6 +111,7 @@ void UFCCWagonRulePanel::NativeDestruct()
 	{
 		World->GetTimerManager().ClearTimer(mPollTimer);
 	}
+	bLayoutCaptured = false;
 	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this))
 	{
 		Subsystem->OnRulesChanged.RemoveDynamic(this, &UFCCWagonRulePanel::HandleRulesChanged);
@@ -129,6 +147,58 @@ void UFCCWagonRulePanel::RefreshExpanded()
 	}
 	FCCWidgetUtils::SetWidgetText(mToggle, Text);
 	mListBox->SetVisibility(GWagonPanelExpanded && StopCount > 0 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	ApplyWindowLayout();
+}
+
+void UFCCWagonRulePanel::CaptureVanillaLayout()
+{
+	UUserWidget* Menu = FCCWidgetUtils::GetOwningUserWidget(this);
+	if (!Menu || !Menu->WidgetTree)
+	{
+		return;
+	}
+	bFluidLayout = Cast<UCanvasPanelSlot>(Slot) != nullptr;
+	mContainer = Cast<USizeBox>(Menu->WidgetTree->FindWidget(bFluidLayout ? TEXT("mLiquidInventoryContainer") : TEXT("mSolidInventoryContainer")));
+	UWidget* Column = bFluidLayout ? nullptr : Menu->WidgetTree->FindWidget(TEXT("VerticalBox_0"));
+	mColumnSlot = Column ? Cast<UCanvasPanelSlot>(Column->Slot) : nullptr;
+	if (!mContainer.IsValid() || (!bFluidLayout && !mColumnSlot.IsValid()))
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Freight car panel: window parts not found (container %s, column %s); window not resized"),
+			*GetNameSafe(mContainer.Get()), *GetNameSafe(mColumnSlot.Get()));
+		return;
+	}
+	bContainerHadOverride = !bFluidLayout;
+	mContainerSize = bFluidLayout ? FluidLayoutSize : FVector2D(mContainer->GetWidthOverride(), mContainer->GetHeightOverride());
+	mContainerMaxWidth = mContainer->GetMaxDesiredWidth();
+	if (mColumnSlot.IsValid())
+	{
+		mColumnOffsets = mColumnSlot->GetOffsets();
+	}
+	bLayoutCaptured = true;
+	UE_LOG(LogFreightCarControl, Verbose, TEXT("Freight car panel: %s layout %.0fx%.0f captured"), bFluidLayout ? TEXT("fluid") : TEXT("solid"), mContainerSize.X, mContainerSize.Y);
+}
+
+void UFCCWagonRulePanel::ApplyWindowLayout()
+{
+	if (!bLayoutCaptured || !mContainer.IsValid())
+	{
+		return;
+	}
+	const FVector2D Extra = GWagonPanelExpanded && mShownStations.Num() > 0 ? ExtraSizeOpen : ExtraSizeClosed;
+	mContainer->SetWidthOverride(mContainerSize.X + Extra.X);
+	mContainer->SetHeightOverride(mContainerSize.Y + Extra.Y);
+	if (mContainerMaxWidth > 0.f)
+	{
+		mContainer->SetMaxDesiredWidth(mContainerMaxWidth + Extra.X);
+	}
+	if (mColumnSlot.IsValid())
+	{
+		FMargin Offsets = mColumnOffsets;
+		Offsets.Right += Extra.X;
+		Offsets.Bottom += Extra.Y;
+		Offsets.Top += Extra.Y * 0.5f;
+		mColumnSlot->SetOffsets(Offsets);
+	}
 }
 
 void UFCCWagonRulePanel::HandleRulesChanged()
