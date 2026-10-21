@@ -2,7 +2,7 @@
 
   python Tools/make_icon.py
 
-Writes Docs/Images/icon-1920.png (full resolution), Docs/Images/icon-512.png (mod page) and Resources/Icon128.png
+Writes Docs/Images/icon-1080.png (full resolution), Docs/Images/icon-512.png (mod page) and Resources/Icon128.png
 (shown in the game's Mods menu). The design is laid out on a 512-unit grid and rendered at full resolution.
 """
 import os
@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIZE = 512  # Design grid; all coordinates below are in these units.
-FULL_SIZE = 1920
+FULL_SIZE = 1080
 SUPERSAMPLE = 2  # Drawn larger than FULL_SIZE and scaled down for smooth edges.
 SCALE = FULL_SIZE * SUPERSAMPLE / SIZE
 
@@ -89,10 +89,10 @@ def main():
     resources = os.path.join(ROOT, "Resources")
     os.makedirs(docs, exist_ok=True)
     os.makedirs(resources, exist_ok=True)
-    full.save(os.path.join(docs, "icon-1920.png"))
+    full.save(os.path.join(docs, "icon-1080.png"))
     full.resize((512, 512), Image.LANCZOS).save(os.path.join(docs, "icon-512.png"))
     full.resize((128, 128), Image.LANCZOS).save(os.path.join(resources, "Icon128.png"))
-    print("Wrote Docs/Images/icon-1920.png, Docs/Images/icon-512.png and Resources/Icon128.png")
+    print("Wrote Docs/Images/icon-1080.png, Docs/Images/icon-512.png and Resources/Icon128.png")
 
 
 if __name__ == "__main__":
