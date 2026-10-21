@@ -3,7 +3,7 @@ Text for the Freight Car Control page on ficsit.app (Satisfactory Mod Repository
 - "Short description" field: the line under SHORT DESCRIPTION (at most 128 characters).
 - "Full description" field: everything under FULL DESCRIPTION.
 - The two transparency fields: the text under NETWORK ACTIVITY TRANSPARENCY and AI USAGE TRANSPARENCY.
-- Logo: Docs/Images/icon-512.png.
+- Logo: Docs/Images/icon-1920.png (full resolution; icon-512.png is the same image smaller).
 Replace the [bracketed] placeholders before publishing.
 -->
 

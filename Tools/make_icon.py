@@ -2,14 +2,17 @@
 
   python Tools/make_icon.py
 
-Writes Resources/Icon128.png (shown in the game's Mods menu) and Docs/Images/icon-512.png (mod page).
+Writes Docs/Images/icon-1920.png (full resolution), Docs/Images/icon-512.png (mod page) and Resources/Icon128.png
+(shown in the game's Mods menu). The design is laid out on a 512-unit grid and rendered at full resolution.
 """
 import os
 from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SIZE = 512
-SCALE = 4  # Drawn larger and scaled down for smooth edges.
+SIZE = 512  # Design grid; all coordinates below are in these units.
+FULL_SIZE = 1920
+SUPERSAMPLE = 2  # Drawn larger than FULL_SIZE and scaled down for smooth edges.
+SCALE = FULL_SIZE * SUPERSAMPLE / SIZE
 
 BACKGROUND_TOP = (38, 44, 54)
 BACKGROUND_BOTTOM = (22, 26, 32)
@@ -48,7 +51,7 @@ def draw_arrow(draw, cx, top, bottom, color):
 
 
 def main():
-    big = SIZE * SCALE
+    big = FULL_SIZE * SUPERSAMPLE
     image = Image.new("RGB", (big, big))
     draw = ImageDraw.Draw(image)
     for row in range(big):
@@ -81,14 +84,15 @@ def main():
         draw.line([s(cx - 20), s(car_y - 52), s(cx + 20), s(car_y - 12)], fill=WHITE, width=s(7))
         draw.line([s(cx + 20), s(car_y - 52), s(cx - 20), s(car_y - 12)], fill=WHITE, width=s(7))
 
-    final = image.resize((SIZE, SIZE), Image.LANCZOS)
+    full = image.resize((FULL_SIZE, FULL_SIZE), Image.LANCZOS)
     docs = os.path.join(ROOT, "Docs", "Images")
     resources = os.path.join(ROOT, "Resources")
     os.makedirs(docs, exist_ok=True)
     os.makedirs(resources, exist_ok=True)
-    final.save(os.path.join(docs, "icon-512.png"))
-    final.resize((128, 128), Image.LANCZOS).save(os.path.join(resources, "Icon128.png"))
-    print("Wrote Docs/Images/icon-512.png and Resources/Icon128.png")
+    full.save(os.path.join(docs, "icon-1920.png"))
+    full.resize((512, 512), Image.LANCZOS).save(os.path.join(docs, "icon-512.png"))
+    full.resize((128, 128), Image.LANCZOS).save(os.path.join(resources, "Icon128.png"))
+    print("Wrote Docs/Images/icon-1920.png, Docs/Images/icon-512.png and Resources/Icon128.png")
 
 
 if __name__ == "__main__":
