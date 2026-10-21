@@ -128,3 +128,14 @@ tree and from the slot widget's own tree.
 An injected widget must not change its own slot in `NativeConstruct`: that runs while the parent panel is still
 building its Slate slot, and Slate asserts. SML's generic slot setup also dereferences a horizontal-box slot when the
 parent is a vertical box, so the mod passes no slot setup for vertical boxes and keeps its spacing inside its own tree.
+
+## Multiplayer
+
+The server holds the rules, applies them at docks and replicates them through `AFCCRuleSubsystem`; clients only show
+them and send edits through `UFCCRemoteCallObject`.
+
+Clients can't walk a train's vehicles the server's way: `AFGTrain::FirstVehicle` is saved but not replicated, so
+`GetFirstVehicle()` is null on clients. The train's `AFGTrainReplicationActor` replicates `mVehicles`, which
+`AFGTrain::RebuildConsist_Server` fills by walking from `FirstVehicle`, so it has the same order. That class isn't
+exported from the game DLL, so `AFCCRuleSubsystem::GetFreightCars` reads `AFGTrain::mTrainReplicationActor` and its
+`mVehicles` through reflection when `GetFirstVehicle()` is null.

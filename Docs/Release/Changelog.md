@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1
+
+- **Multiplayer: players who aren't the host now see the train's freight cars.** The timetable editor said the train
+  had no freight cars, and freight car menus showed no rules, for everyone except the host.
+
+**Good to know**
+
+- Everyone in a multiplayer session needs Freight Car Control 1.0.1.
+
 ## 1.0.0
 
 First release.

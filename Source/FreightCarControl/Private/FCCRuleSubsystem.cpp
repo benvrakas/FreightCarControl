@@ -359,15 +359,41 @@ void AFCCRuleSubsystem::Sweep()
 TArray<AFGFreightWagon*> AFCCRuleSubsystem::GetFreightCars(const AFGTrain* Train)
 {
 	TArray<AFGFreightWagon*> Cars;
-	if (Train)
+	auto AddIfFreight = [&Cars](const AFGRailroadVehicle* Vehicle)
+	{
+		if (AFGFreightWagon* Wagon = Cast<AFGFreightWagon>(const_cast<AFGRailroadVehicle*>(Vehicle)))
+		{
+			Cars.Add(Wagon);
+		}
+	};
+	if (!Train)
+	{
+		return Cars;
+	}
+	if (Train->GetFirstVehicle())
 	{
 		for (AFGRailroadSubsystem::TConstTrainIterator It(Train->GetFirstVehicle()); It; ++It)
 		{
-			if (AFGFreightWagon* Wagon = Cast<AFGFreightWagon>(const_cast<AFGRailroadVehicle*>(*It)))
-			{
-				Cars.Add(Wagon);
-			}
+			AddIfFreight(*It);
 		}
+		return Cars;
+	}
+
+	// On clients, reads the train replication actor's vehicle list instead (see Docs/Architecture.md, Multiplayer).
+	static FObjectPropertyBase* ReplicationActorProperty = FindFProperty<FObjectPropertyBase>(AFGTrain::StaticClass(), TEXT("mTrainReplicationActor"));
+	const UObject* ReplicationActor = ReplicationActorProperty ? ReplicationActorProperty->GetObjectPropertyValue_InContainer(Train) : nullptr;
+	const FArrayProperty* VehiclesProperty = ReplicationActor ? FindFProperty<FArrayProperty>(ReplicationActor->GetClass(), TEXT("mVehicles")) : nullptr;
+	const FObjectPropertyBase* VehicleProperty = VehiclesProperty ? CastField<FObjectPropertyBase>(VehiclesProperty->Inner) : nullptr;
+	if (!VehicleProperty)
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("%s: vehicle list not found on the client (replication actor %s)"),
+			*Train->GetTrainName().ToString(), *GetNameSafe(ReplicationActor));
+		return Cars;
+	}
+	FScriptArrayHelper Vehicles(VehiclesProperty, VehiclesProperty->ContainerPtrToValuePtr<void>(ReplicationActor));
+	for (int32 Index = 0; Index < Vehicles.Num(); ++Index)
+	{
+		AddIfFreight(Cast<AFGRailroadVehicle>(VehicleProperty->GetObjectPropertyValue(Vehicles.GetRawPtr(Index))));
 	}
 	return Cars;
 }
