@@ -47,7 +47,7 @@ namespace
 void FFCCDockingHook::InstallHooks()
 {
 #if WITH_EDITOR
-	UE_LOG(LogFreightCarControl, Log, TEXT("Editor build: docking hook not installed"));
+	UE_LOG(LogFreightCarControl, Log, TEXT("Editor build: docking hooks not installed"));
 #else
 	static bool bInstalled = false;
 	if (bInstalled)
@@ -55,19 +55,45 @@ void FFCCDockingHook::InstallHooks()
 		return;
 	}
 	bInstalled = true;
-	SUBSCRIBE_METHOD_AFTER(AFGBuildableTrainPlatformCargo::EvaluateRuleSet, [](AFGBuildableTrainPlatformCargo* Self)
+
+	SUBSCRIBE_METHOD(AFGBuildableTrainPlatformCargo::EvaluateRuleSet, [](auto& Scope, AFGBuildableTrainPlatformCargo* Self)
 	{
-		AfterEvaluateRuleSet(Self);
+		const EFCCCarMode Mode = ResolveMode(Self);
+		BeforeEvaluateRuleSet(Self, Mode);
+		Scope(Self);
+		AfterEvaluateRuleSet(Self, Mode);
 	});
-	UE_LOG(LogFreightCarControl, Log, TEXT("Docking hook installed (AFGBuildableTrainPlatformCargo::EvaluateRuleSet)"));
+
+	AFGBuildableTrainPlatformCargo* Sample = GetMutableDefault<AFGBuildableTrainPlatformCargo>();
+	SUBSCRIBE_METHOD_VIRTUAL_AFTER(AFGBuildableTrainPlatformCargo::Undock, Sample, [](AFGBuildableTrainPlatformCargo* Self)
+	{
+		if (Self && Self->HasAuthority())
+		{
+			if (AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(Self))
+			{
+				Rules->EndPlatformOverride(Self);
+			}
+		}
+	});
+	SUBSCRIBE_METHOD_VIRTUAL_AFTER(AFGBuildableTrainPlatformCargo::CancelDockingSequence, Sample, [](AFGBuildableTrainPlatformCargo* Self)
+	{
+		if (Self && Self->HasAuthority())
+		{
+			if (AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(Self))
+			{
+				Rules->EndPlatformOverride(Self);
+			}
+		}
+	});
+	UE_LOG(LogFreightCarControl, Log, TEXT("Docking hooks installed (EvaluateRuleSet, Undock, CancelDockingSequence)"));
 #endif
 }
 
-void FFCCDockingHook::AfterEvaluateRuleSet(AFGBuildableTrainPlatformCargo* Platform)
+EFCCCarMode FFCCDockingHook::ResolveMode(AFGBuildableTrainPlatformCargo* Platform)
 {
 	if (!Platform || !Platform->HasAuthority())
 	{
-		return;
+		return EFCCCarMode::Platform;
 	}
 	AFGRailroadVehicle* Vehicle = Platform->mDockedRailroadVehicle;
 	AFGBuildableRailroadStation* Station = Platform->mStationDockingMaster;
@@ -76,45 +102,76 @@ void FFCCDockingHook::AfterEvaluateRuleSet(AFGBuildableTrainPlatformCargo* Platf
 	if (!Vehicle || !Station || !TimeTable)
 	{
 		UE_LOG(LogFreightCarControl, VeryVerbose, TEXT("%s: no docked vehicle, station or time table"), *GetNameSafe(Platform));
-		return;
+		return EFCCCarMode::Platform;
 	}
 	const AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(Platform);
 	if (!Rules)
 	{
 		UE_LOG(LogFreightCarControl, Warning, TEXT("%s: rule subsystem missing, car rules not applied"), *GetNameSafe(Platform));
-		return;
+		return EFCCCarMode::Platform;
 	}
 
 	const int32 StopIndex = TimeTable->GetCurrentStop();
 	const FTimeTableStop Stop = TimeTable->GetStop(StopIndex);
+	const bool bLog = ShouldLogDecision(Platform, Vehicle, StopIndex);
 	if (Stop.Station != Station->GetStationIdentifier())
 	{
-		if (ShouldLogDecision(Platform, Vehicle, StopIndex))
+		if (bLog)
 		{
 			UE_LOG(LogFreightCarControl, Verbose, TEXT("%s: %s docked at %s, which isn't its current stop %d (%s); car rules not applied"),
 				*GetNameSafe(Platform), *Train->GetTrainName().ToString(), *GetNameSafe(Station), StopIndex,
 				Stop.Station ? *Stop.Station->GetStationName().ToString() : TEXT("none"));
 		}
-		return;
+		return EFCCCarMode::Platform;
 	}
 
 	const int32 CarIndex = AFCCRuleSubsystem::GetFreightCarIndex(Vehicle);
 	if (CarIndex == INDEX_NONE)
 	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("%s: docked vehicle %s isn't a freight car of %s"),
-			*GetNameSafe(Platform), *GetNameSafe(Vehicle), *Train->GetTrainName().ToString());
-		return;
+		if (bLog)
+		{
+			UE_LOG(LogFreightCarControl, Warning, TEXT("%s: docked vehicle %s isn't a freight car of %s"),
+				*GetNameSafe(Platform), *GetNameSafe(Vehicle), *Train->GetTrainName().ToString());
+		}
+		return EFCCCarMode::Platform;
 	}
 
 	const EFCCCarMode Mode = Rules->GetCarMode(TimeTable, StopIndex, CarIndex);
-	if (ShouldLogDecision(Platform, Vehicle, StopIndex))
+	if (bLog)
 	{
-		UE_LOG(LogFreightCarControl, Log, TEXT("%s at %s (stop %d): car %d %s by %s (%s, %s)"),
-			*Train->GetTrainName().ToString(), *Stop.Station->GetStationName().ToString(), StopIndex, CarIndex + 1,
-			Mode == EFCCCarMode::Skip ? TEXT("SKIPPED") : TEXT("transfers"), *GetNameSafe(Platform),
-			*GetNameSafe(Platform->GetClass()), Platform->GetIsInLoadMode() ? TEXT("load") : TEXT("unload"));
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s at %s (stop %d): car %d -> %s, by %s (%s, set to %s)"),
+			*Train->GetTrainName().ToString(), *Stop.Station->GetStationName().ToString(), StopIndex + 1, CarIndex + 1,
+			*FCCCarMode::GetDisplayName(Mode).ToString(), *GetNameSafe(Platform), *GetNameSafe(Platform->GetClass()),
+			Platform->GetIsInLoadMode() ? TEXT("load") : TEXT("unload"));
 	}
-	if (Mode == EFCCCarMode::Skip)
+	return Mode;
+}
+
+void FFCCDockingHook::BeforeEvaluateRuleSet(AFGBuildableTrainPlatformCargo* Platform, EFCCCarMode Mode)
+{
+	if (!Platform || !Platform->HasAuthority())
+	{
+		return;
+	}
+	AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(Platform);
+	if (!Rules)
+	{
+		return;
+	}
+	AFGRailroadVehicle* Vehicle = Platform->mDockedRailroadVehicle;
+	if (Mode == EFCCCarMode::Load || Mode == EFCCCarMode::Unload)
+	{
+		Rules->BeginPlatformOverride(Platform, Vehicle, Mode == EFCCCarMode::Load);
+	}
+	else
+	{
+		Rules->EndPlatformOverride(Platform, Vehicle);
+	}
+}
+
+void FFCCDockingHook::AfterEvaluateRuleSet(AFGBuildableTrainPlatformCargo* Platform, EFCCCarMode Mode)
+{
+	if (Mode == EFCCCarMode::Skip && Platform && Platform->HasAuthority())
 	{
 		ApplySkip(Platform);
 	}

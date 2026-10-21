@@ -6,14 +6,17 @@
 #include "Subsystem/ModSubsystem.h"
 #include "FCCRuleSubsystem.generated.h"
 
+class AFGBuildableTrainPlatformCargo;
 class AFGRailroadTimeTable;
 class AFGRailroadVehicle;
 class AFGTrain;
+class AFGTrainStationIdentifier;
 struct FTimeTableStop;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FFCCOnRulesChanged);
 
 // Holds every train's per-stop freight car rules, saves them with the world and replicates them to clients.
+// Also tracks platforms whose load/unload setting is switched for a docked car, and puts them back.
 UCLASS()
 class FREIGHTCARCONTROL_API AFCCRuleSubsystem : public AModSubsystem, public IFGSaveInterface
 {
@@ -44,6 +47,9 @@ public:
 	// Server only. Replaces all stop rules of TimeTable.
 	void SetAllStopRules(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules);
 
+	// Server only. Applies Rules now if Train's timetable stops visit ExpectedStations in order, or when its stops next change to that.
+	void SetAllStopRulesWhenStopsMatch(AFGTrain* Train, const TArray<FFCCStopRule>& Rules, const TArray<AFGTrainStationIdentifier*>& ExpectedStations);
+
 	// Server only. Inserts an empty rule at StopIndex after a stop was added there.
 	void NotifyStopInserted(AFGRailroadTimeTable* TimeTable, int32 StopIndex);
 
@@ -52,6 +58,12 @@ public:
 
 	// Server only. Re-aligns rules after TimeTable's stop list was replaced, matching stops by station and occurrence.
 	void NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& OldStops, const TArray<FTimeTableStop>& NewStops);
+
+	// Server only. Switches Platform to bLoadMode for Vehicle's dock, remembering its own setting.
+	void BeginPlatformOverride(AFGBuildableTrainPlatformCargo* Platform, AFGRailroadVehicle* Vehicle, bool bLoadMode);
+
+	// Server only. Puts Platform's own setting back if the mod switched it for a vehicle other than KeepForVehicle.
+	void EndPlatformOverride(AFGBuildableTrainPlatformCargo* Platform, const AFGRailroadVehicle* KeepForVehicle = nullptr);
 
 	// Returns the position of Vehicle among the freight cars of its train, or INDEX_NONE if it isn't a freight car.
 	static int32 GetFreightCarIndex(const AFGRailroadVehicle* Vehicle);
@@ -66,6 +78,7 @@ public:
 	//~ Begin AActor
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	//~ End AActor
 
 	//~ Begin IFGSaveInterface
@@ -76,20 +89,35 @@ public:
 
 private:
 	// Returns the entry for TimeTable, or nullptr.
+	FFCCTimeTableRules* FindEntry(const AFGRailroadTimeTable* TimeTable);
 	const FFCCTimeTableRules* FindEntry(const AFGRailroadTimeTable* TimeTable) const;
 
 	// Returns the entry for TimeTable, adding one if needed.
 	FFCCTimeTableRules& FindOrAddEntry(AFGRailroadTimeTable* TimeTable);
 
-	// Removes entries whose time table is gone or that hold no skip; trims trailing empty stops.
+	// Removes entries whose time table is gone or that hold no rule; trims trailing empty stops.
 	void Compact();
 
 	// Marks the rules dirty for replication and notifies listeners.
 	void RulesChanged(const TCHAR* Reason);
+
+	// Applies a pending client save for TimeTable if its stops now match.
+	void TryApplyPending(AFGRailroadTimeTable* TimeTable);
+
+	// Restores platforms whose overridden dock has ended, and drops stale pending saves.
+	void SweepOverrides();
 
 	UFUNCTION()
 	void OnRep_Rules();
 
 	UPROPERTY(SaveGame, ReplicatedUsing = OnRep_Rules)
 	TArray<FFCCTimeTableRules> mRules;
+
+	UPROPERTY(SaveGame)
+	TArray<FFCCPlatformOverride> mOverrides;
+
+	UPROPERTY()
+	TArray<FFCCPendingRules> mPending;
+
+	FTimerHandle mSweepTimer;
 };

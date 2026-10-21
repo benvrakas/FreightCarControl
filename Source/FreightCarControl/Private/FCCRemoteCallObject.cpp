@@ -3,6 +3,8 @@
 #include "FreightCarControl.h"
 #include "FGPlayerController.h"
 #include "FGRailroadTimeTable.h"
+#include "FGTrain.h"
+#include "FGTrainStationIdentifier.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
@@ -10,6 +12,9 @@ namespace
 {
 	// Largest rule a client may send; matches the subsystem's car limit.
 	constexpr int32 MaxCars = 256;
+
+	// Most stops a timetable can have.
+	constexpr int32 MaxStops = 100;
 
 	bool IsRuleValid(const FFCCStopRule& Rule)
 	{
@@ -39,26 +44,32 @@ UFCCRemoteCallObject* UFCCRemoteCallObject::GetLocal(const UObject* WorldContext
 	return RCO;
 }
 
-bool UFCCRemoteCallObject::Server_SetStopRule_Validate(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule)
+bool UFCCRemoteCallObject::Server_SetStopRule_Validate(AFGRailroadTimeTable* TimeTable, int32 StopIndex, AFGTrainStationIdentifier* ExpectedStation, const FFCCStopRule& Rule)
 {
 	return IsRuleValid(Rule);
 }
 
-void UFCCRemoteCallObject::Server_SetStopRule_Implementation(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule)
+void UFCCRemoteCallObject::Server_SetStopRule_Implementation(AFGRailroadTimeTable* TimeTable, int32 StopIndex, AFGTrainStationIdentifier* ExpectedStation, const FFCCStopRule& Rule)
 {
-	AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(TimeTable);
-	if (!Rules)
+	AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(GetOwnerPlayerController());
+	if (!Rules || !TimeTable)
 	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("Server_SetStopRule: no rule subsystem (timetable %s)"), *GetNameSafe(TimeTable));
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Server_SetStopRule: no rule subsystem or timetable (%s)"), *GetNameSafe(TimeTable));
+		return;
+	}
+	if (TimeTable->GetStop(StopIndex).Station != ExpectedStation)
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Server_SetStopRule from %s: stop %d of %s no longer visits %s, ignored"),
+			*GetNameSafe(GetOwnerPlayerController()), StopIndex, *GetNameSafe(TimeTable), *GetNameSafe(ExpectedStation));
 		return;
 	}
 	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetStopRule from %s: %s stop %d"), *GetNameSafe(GetOwnerPlayerController()), *GetNameSafe(TimeTable), StopIndex);
 	Rules->SetStopRule(TimeTable, StopIndex, Rule);
 }
 
-bool UFCCRemoteCallObject::Server_SetAllStopRules_Validate(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules)
+bool UFCCRemoteCallObject::Server_SetAllStopRules_Validate(AFGTrain* Train, const TArray<AFGTrainStationIdentifier*>& ExpectedStations, const TArray<FFCCStopRule>& Rules)
 {
-	if (Rules.Num() > 100)
+	if (Rules.Num() > MaxStops || ExpectedStations.Num() > MaxStops)
 	{
 		return false;
 	}
@@ -72,14 +83,14 @@ bool UFCCRemoteCallObject::Server_SetAllStopRules_Validate(AFGRailroadTimeTable*
 	return true;
 }
 
-void UFCCRemoteCallObject::Server_SetAllStopRules_Implementation(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules)
+void UFCCRemoteCallObject::Server_SetAllStopRules_Implementation(AFGTrain* Train, const TArray<AFGTrainStationIdentifier*>& ExpectedStations, const TArray<FFCCStopRule>& Rules)
 {
-	AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(TimeTable);
-	if (!Subsystem)
+	AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(GetOwnerPlayerController());
+	if (!Subsystem || !Train)
 	{
-		UE_LOG(LogFreightCarControl, Warning, TEXT("Server_SetAllStopRules: no rule subsystem (timetable %s)"), *GetNameSafe(TimeTable));
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Server_SetAllStopRules: no rule subsystem or train (%s)"), *GetNameSafe(Train));
 		return;
 	}
-	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetAllStopRules from %s: %s, %d stops"), *GetNameSafe(GetOwnerPlayerController()), *GetNameSafe(TimeTable), Rules.Num());
-	Subsystem->SetAllStopRules(TimeTable, Rules);
+	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetAllStopRules from %s: %s, %d stops"), *GetNameSafe(GetOwnerPlayerController()), *Train->GetTrainName().ToString(), Rules.Num());
+	Subsystem->SetAllStopRulesWhenStopsMatch(Train, Rules, ExpectedStations);
 }

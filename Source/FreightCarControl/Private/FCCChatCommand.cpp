@@ -33,7 +33,7 @@ namespace
 		FString Text;
 		for (int32 Car = 0; Car < FMath::Max(CarCount, Rule.Cars.Num()); ++Car)
 		{
-			Text += Rule.GetCarMode(Car) == EFCCCarMode::Skip ? TEXT("-") : TEXT("X");
+			Text += FCCCarMode::GetCode(Rule.GetCarMode(Car));
 		}
 		return Text.IsEmpty() ? TEXT("(no freight cars)") : Text;
 	}
@@ -45,7 +45,7 @@ AFCCChatCommand::AFCCChatCommand()
 	Aliases.Add(TEXT("freightcars"));
 	MinNumberOfArguments = 0;
 	bOnlyUsableByPlayer = true;
-	Usage = NSLOCTEXT("FreightCarControl", "ChatUsage", "/fcc  |  /fcc <stop> <car> skip|transfer  |  /fcc <stop> all skip|transfer  |  /fcc clear   (drive the train first; stops and cars count from 1)");
+	Usage = NSLOCTEXT("FreightCarControl", "ChatUsage", "/fcc  |  /fcc <stop> <car|all> platform|skip|load|unload  |  /fcc clear   (drive the train first; stops and cars count from 1)");
 }
 
 EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* Sender, const TArray<FString>& Arguments, const FString& Label)
@@ -73,14 +73,24 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 		const int32 Stop = FCString::Atoi(*Arguments[0]) - 1;
 		const bool bAllCars = Arguments[1].Equals(TEXT("all"), ESearchCase::IgnoreCase);
 		const int32 Car = bAllCars ? 0 : FCString::Atoi(*Arguments[1]) - 1;
-		const bool bSkip = Arguments[2].Equals(TEXT("skip"), ESearchCase::IgnoreCase);
-		const bool bTransfer = Arguments[2].Equals(TEXT("transfer"), ESearchCase::IgnoreCase);
-		if (Stop < 0 || Stop >= TimeTable->GetNumStops() || (!bAllCars && Car < 0) || (!bSkip && !bTransfer))
+		int32 ModeIndex = INDEX_NONE;
+		for (uint8 Candidate = 0; Candidate < static_cast<uint8>(EFCCCarMode::Count); ++Candidate)
+		{
+			if (Arguments[2].Equals(FCCCarMode::GetDisplayName(static_cast<EFCCCarMode>(Candidate)).ToString(), ESearchCase::IgnoreCase))
+			{
+				ModeIndex = Candidate;
+			}
+		}
+		if (Arguments[2].Equals(TEXT("transfer"), ESearchCase::IgnoreCase))
+		{
+			ModeIndex = static_cast<int32>(EFCCCarMode::Platform);
+		}
+		if (Stop < 0 || Stop >= TimeTable->GetNumStops() || (!bAllCars && Car < 0) || ModeIndex == INDEX_NONE)
 		{
 			PrintCommandUsage(Sender);
 			return EExecutionStatus::BAD_ARGUMENTS;
 		}
-		const EFCCCarMode Mode = bSkip ? EFCCCarMode::Skip : EFCCCarMode::Transfer;
+		const EFCCCarMode Mode = static_cast<EFCCCarMode>(ModeIndex);
 		if (bAllCars)
 		{
 			FFCCStopRule Rule;
@@ -98,7 +108,7 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 		return EExecutionStatus::BAD_ARGUMENTS;
 	}
 
-	Sender->SendChatMessage(FString::Printf(TEXT("%s: %d freight cars, %d stops (X = transfer, - = skip)"),
+	Sender->SendChatMessage(FString::Printf(TEXT("%s: %d freight cars, %d stops (P = platform setting, - = skip, L = load, U = unload)"),
 		*Train->GetTrainName().ToString(), CarCount, TimeTable->GetNumStops()));
 	for (int32 Stop = 0; Stop < TimeTable->GetNumStops(); ++Stop)
 	{

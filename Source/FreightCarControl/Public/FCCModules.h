@@ -5,7 +5,9 @@
 #include "Module/GameWorldModule.h"
 #include "FCCModules.generated.h"
 
-// Freight Car Control's root game instance module; installs hooks and registers the remote call object.
+class UWidgetBlueprintHookData;
+
+// Freight Car Control's root game instance module; installs hooks, adds the UI and registers the remote call object.
 UCLASS()
 class FREIGHTCARCONTROL_API UFCCGameInstanceModule : public UGameInstanceModule
 {
@@ -15,6 +17,10 @@ public:
 	UFCCGameInstanceModule();
 
 	virtual void DispatchLifecycleEvent(ELifecyclePhase Phase) override;
+
+private:
+	UPROPERTY()
+	TArray<TObjectPtr<UWidgetBlueprintHookData>> mWidgetHooks;
 };
 
 // Freight Car Control's root game world module; registers the rule subsystem and the chat command.

@@ -5,6 +5,8 @@
 #include "FCCRuleSubsystem.h"
 #include "FCCTimeTableHooks.h"
 #include "FreightCarControl.h"
+#include "Patching/WidgetBlueprintHookManager.h"
+#include "UI/FCCUIHooks.h"
 
 UFCCGameInstanceModule::UFCCGameInstanceModule()
 {
@@ -18,6 +20,12 @@ void UFCCGameInstanceModule::DispatchLifecycleEvent(ELifecyclePhase Phase)
 	{
 		FFCCDockingHook::InstallHooks();
 		FFCCTimeTableHooks::InstallHooks();
+	}
+	else if (Phase == ELifecyclePhase::POST_INITIALIZATION && mWidgetHooks.Num() == 0)
+	{
+		TArray<UWidgetBlueprintHookData*> Hooks;
+		FCCUIHooks::Register(this, Hooks);
+		mWidgetHooks.Append(Hooks);
 	}
 	Super::DispatchLifecycleEvent(Phase);
 }
