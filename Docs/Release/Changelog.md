@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- **Right-click a car's button to cycle its mode backwards** (Unload → Load → Skip → Platform), in the timetable editor
+  and in the freight car menu. Left-click still goes forwards.
+
 ## 1.0.1
 
 - **Multiplayer: players who aren't the host now see the train's freight cars.** The timetable editor said the train

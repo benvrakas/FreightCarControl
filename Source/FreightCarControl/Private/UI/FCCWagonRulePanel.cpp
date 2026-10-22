@@ -252,7 +252,7 @@ void UFCCWagonRulePanel::RebuildRows()
 		Button->bModeFirst = true;
 		Button->SetLabel(FText::Format(LOCTEXT("StopLabel", "{0}. {1}"), StopIndex + 1, Station ? Station->GetStationName() : LOCTEXT("UnknownStation", "?")));
 		Button->SetMode(Subsystem->GetCarMode(TimeTable, StopIndex, mShownCarIndex));
-		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked) { OnStopClicked(Clicked); };
+		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked, EFCCCarMode Mode) { OnStopClicked(Clicked, Mode); };
 		if (UScrollBoxSlot* RowSlot = Cast<UScrollBoxSlot>(mRows->AddChild(Button)))
 		{
 			RowSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
@@ -260,7 +260,7 @@ void UFCCWagonRulePanel::RebuildRows()
 	}
 }
 
-void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button)
+void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button, EFCCCarMode Mode)
 {
 	const AFGFreightWagon* Wagon = GetWagon();
 	const AFGTrain* Train = Wagon ? Wagon->GetTrain() : nullptr;
@@ -271,7 +271,6 @@ void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button)
 	{
 		return;
 	}
-	const EFCCCarMode Mode = FCCCarMode::Next(Button->GetMode());
 	FFCCStopRule Rule = Subsystem->GetStopRule(TimeTable, Button->Index);
 	Rule.SetCarMode(mShownCarIndex, Mode);
 	Rule.Trim();

@@ -32,6 +32,13 @@ namespace FCCCarMode
 		return static_cast<EFCCCarMode>((static_cast<uint8>(Mode) + 1) % static_cast<uint8>(EFCCCarMode::Count));
 	}
 
+	// Returns the mode before Mode in the UI cycle.
+	inline EFCCCarMode Previous(EFCCCarMode Mode)
+	{
+		constexpr uint8 Count = static_cast<uint8>(EFCCCarMode::Count);
+		return static_cast<EFCCCarMode>((static_cast<uint8>(Mode) + Count - 1) % Count);
+	}
+
 	// Returns the mode's display name.
 	FREIGHTCARCONTROL_API FText GetDisplayName(EFCCCarMode Mode);
 

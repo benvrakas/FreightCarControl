@@ -27,8 +27,8 @@ public:
 	// Makes the button exactly Width wide, so buttons line up in columns; 0 sizes it to its text.
 	void SetFixedWidth(float Width);
 
-	// Called with this button when it is clicked.
-	TFunction<void(UFCCCarModeButton*)> OnClickedHandler;
+	// Called with this button and the mode it should change to: the next one on a left click, the previous one on a right click.
+	TFunction<void(UFCCCarModeButton*, EFCCCarMode)> OnClickedHandler;
 
 	// Free value for the owner, e.g. the car or stop index.
 	int32 Index = INDEX_NONE;
@@ -38,6 +38,7 @@ public:
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 private:
 	// Creates the vanilla button, or a plain one if the vanilla class is missing, inside a size box.

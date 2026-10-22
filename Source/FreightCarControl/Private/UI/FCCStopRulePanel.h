@@ -33,7 +33,7 @@ private:
 	// Recreates one button per freight car from mRule.
 	void RebuildButtons(const AFGTrain* Train);
 
-	void OnCarClicked(UFCCCarModeButton* Button);
+	void OnCarClicked(UFCCCarModeButton* Button, EFCCCarMode Mode);
 
 	UFUNCTION()
 	void HandleDiscard();

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "FCCTypes.h"
 #include "FCCWagonRulePanel.generated.h"
 
 class AFGFreightWagon;
@@ -41,7 +42,7 @@ private:
 	// Updates the toggle text, the list visibility and the window size.
 	void RefreshExpanded();
 
-	void OnStopClicked(UFCCCarModeButton* Button);
+	void OnStopClicked(UFCCCarModeButton* Button, EFCCCarMode Mode);
 
 	UFUNCTION()
 	void HandleToggle();

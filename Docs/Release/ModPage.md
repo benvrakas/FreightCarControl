@@ -36,7 +36,7 @@ Rules belong to the train, so other trains using the same stations aren't affect
 
 - **Timetable editor.** Open a locomotive, edit its timetable and open a stop's settings. Under the load and unload
   filters there's a **Freight cars at this stop** section with a button per car; each click cycles Platform → Skip →
-  Load → Unload. Save the stop, then save the timetable.
+  Load → Unload, and a right-click goes back. Save the stop, then save the timetable.
 - **Freight car menu.** Open a freight car and click **Timetable rules** to see this car's mode at every stop of its
   train. Clicks save straight away.
 

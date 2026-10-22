@@ -133,7 +133,7 @@ void UFCCStopRulePanel::Poll()
 	}
 	else
 	{
-		mHint->SetText(LOCTEXT("StopPanelHint", "Click a car to change what it does here. Platform: the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only."));
+		mHint->SetText(LOCTEXT("StopPanelHint", "Click a car to change what it does here (right-click to go back). Platform: the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only."));
 	}
 	RebuildButtons(Train);
 	UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: %s, train %s, %d freight cars"), *GetNameSafe(StationWidget), *GetNameSafe(Train), CarCount);
@@ -155,19 +155,18 @@ void UFCCStopRulePanel::RebuildButtons(const AFGTrain* Train)
 		Button->SetFixedWidth(CarButtonWidth);
 		Button->SetLabel(FText::Format(bFluid ? LOCTEXT("FluidCarLabel", "Car {0} (fluid)") : LOCTEXT("CarLabel", "Car {0}"), CarIndex + 1));
 		Button->SetMode(mRule.GetCarMode(CarIndex));
-		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked) { OnCarClicked(Clicked); };
+		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked, EFCCCarMode Mode) { OnCarClicked(Clicked, Mode); };
 		mCars->AddChildToWrapBox(Button);
 	}
 }
 
-void UFCCStopRulePanel::OnCarClicked(UFCCCarModeButton* Button)
+void UFCCStopRulePanel::OnCarClicked(UFCCCarModeButton* Button, EFCCCarMode Mode)
 {
 	UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
 	if (!Button || !Session || !mStationWidget.IsValid())
 	{
 		return;
 	}
-	const EFCCCarMode Mode = FCCCarMode::Next(Button->GetMode());
 	mRule.SetCarMode(Button->Index, Mode);
 	mRule.Trim();
 	Button->SetMode(Mode);

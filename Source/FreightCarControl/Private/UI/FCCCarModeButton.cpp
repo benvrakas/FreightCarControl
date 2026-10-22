@@ -99,12 +99,27 @@ void UFCCCarModeButton::Refresh()
 	}
 }
 
+FReply UFCCCarModeButton::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// Cycles backwards on a right click.
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	{
+		UE_LOG(LogFreightCarControl, Verbose, TEXT("%s right-clicked (index %d, mode %s)"), *GetName(), Index, *FCCCarMode::GetDisplayName(Mode).ToString());
+		if (OnClickedHandler)
+		{
+			OnClickedHandler(this, FCCCarMode::Previous(Mode));
+		}
+		return FReply::Handled();
+	}
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
 void UFCCCarModeButton::HandleClicked()
 {
 	UE_LOG(LogFreightCarControl, Verbose, TEXT("%s clicked (index %d, mode %s)"), *GetName(), Index, *FCCCarMode::GetDisplayName(Mode).ToString());
 	if (OnClickedHandler)
 	{
-		OnClickedHandler(this);
+		OnClickedHandler(this, FCCCarMode::Next(Mode));
 	}
 }
 
