@@ -2,6 +2,8 @@
 
 ## 1.0.2
 
+- **Rules no longer move to other stops when another mod changes a stop's station** (for example DynamicTimeTable).
+  A timetable whose stations are only reordered still keeps each rule with its station.
 - **Right-click a car's button to cycle its mode backwards** (Unload → Load → Skip → Platform), in the timetable editor
   and in the freight car menu. Left-click still goes forwards.
 

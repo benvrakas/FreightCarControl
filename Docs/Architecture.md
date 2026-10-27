@@ -74,10 +74,15 @@ world through `IFGSaveInterface`; nothing is written to vanilla objects, so remo
 Entries with no rules, or whose timetable is gone, are dropped before saving.
 
 Stop alignment is kept by hooks on `AFGRailroadTimeTable::AddStop`, `RemoveStop`, `SetStops` and
-`PurgeInvalidStops`. When the whole list is replaced, each new stop takes the rule of the old stop with the same
-(station, occurrence of that station), so reordering keeps rules with their stops; a stop left unmatched (its station
-changed, e.g. swapped by DynamicTimeTable, which hooks `SetStops` too) takes the rule of the old stop at the same
-position if no other stop claimed it.
+`PurgeInvalidStops`. When the whole list is replaced (`MapReplacedStops`):
+
+- the same stations in another order is a reorder, and each rule moves with its (station, occurrence);
+- the same number of stops with some stations changed keeps every rule at its position. Other mods do this: they
+  replace a stop's station (DynamicTimeTable sends a train to another station of a group; it hooks `SetStops` too).
+  Matching by station there would hand a stop's rule to another stop that visits the new station;
+- any other change matches stops by (station, occurrence), and stops left unmatched by position.
+
+Every replacement is logged with the stations before and after and which old stop each rule came from.
 
 Stops are identified by position everywhere else. Clients edit through `UFCCRemoteCallObject`:
 

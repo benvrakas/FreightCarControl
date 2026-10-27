@@ -34,6 +34,68 @@ namespace
 		return Keys;
 	}
 
+	// Returns the stops' station names, numbered, e.g. "1. Iron SRC, 2. Iron SNK".
+	FString DescribeStops(const TArray<FTimeTableStop>& Stops)
+	{
+		TArray<FString> Names;
+		for (int32 Index = 0; Index < Stops.Num(); ++Index)
+		{
+			Names.Add(FString::Printf(TEXT("%d. %s"), Index + 1, Stops[Index].Station ? *Stops[Index].Station->GetStationName().ToString() : TEXT("?")));
+		}
+		return FString::Join(Names, TEXT(", "));
+	}
+
+	// Returns, for each new stop, the old stop whose rule it keeps (INDEX_NONE: none). A reorder moves rules with their
+	// stations; the same stop count with changed stations keeps them by position; otherwise stops match by
+	// (station, occurrence), then by position.
+	TArray<int32> MapReplacedStops(const TArray<FTimeTableStop>& OldStops, const TArray<FTimeTableStop>& NewStops)
+	{
+		TArray<int32> Source;
+		Source.Init(INDEX_NONE, NewStops.Num());
+		if (OldStops.Num() == NewStops.Num())
+		{
+			auto SortedStations = [](const TArray<FTimeTableStop>& Stops)
+			{
+				TArray<UPTRINT> Stations;
+				for (const FTimeTableStop& Stop : Stops)
+				{
+					Stations.Add(reinterpret_cast<UPTRINT>(Stop.Station.Get()));
+				}
+				Stations.Sort();
+				return Stations;
+			};
+			if (SortedStations(OldStops) != SortedStations(NewStops))
+			{
+				for (int32 Index = 0; Index < NewStops.Num(); ++Index)
+				{
+					Source[Index] = Index;
+				}
+				return Source;
+			}
+		}
+		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> OldKeys = MakeStopKeys(OldStops);
+		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> NewKeys = MakeStopKeys(NewStops);
+		TBitArray<> Used(false, OldKeys.Num());
+		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
+		{
+			const int32 OldIndex = OldKeys.IndexOfByKey(NewKeys[NewIndex]);
+			if (OldIndex != INDEX_NONE)
+			{
+				Source[NewIndex] = OldIndex;
+				Used[OldIndex] = true;
+			}
+		}
+		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
+		{
+			if (Source[NewIndex] == INDEX_NONE && OldKeys.IsValidIndex(NewIndex) && !Used[NewIndex])
+			{
+				Source[NewIndex] = NewIndex;
+				Used[NewIndex] = true;
+			}
+		}
+		return Source;
+	}
+
 	FString DescribeTimeTable(const AFGRailroadTimeTable* TimeTable)
 	{
 		const AFGTrain* Train = TimeTable ? Cast<AFGTrain>(TimeTable->GetOwner()) : nullptr;
@@ -249,31 +311,10 @@ void AFCCRuleSubsystem::NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, con
 	FFCCTimeTableRules* Entry = FindEntry(TimeTable);
 	if (Entry)
 	{
-		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> OldKeys = MakeStopKeys(OldStops);
-		const TArray<TPair<const AFGTrainStationIdentifier*, int32>> NewKeys = MakeStopKeys(NewStops);
-		TArray<int32> Source;
-		Source.Init(INDEX_NONE, NewKeys.Num());
-		TBitArray<> Used(false, OldKeys.Num());
-		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
-		{
-			const int32 OldIndex = OldKeys.IndexOfByKey(NewKeys[NewIndex]);
-			if (OldIndex != INDEX_NONE)
-			{
-				Source[NewIndex] = OldIndex;
-				Used[OldIndex] = true;
-			}
-		}
-		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
-		{
-			if (Source[NewIndex] == INDEX_NONE && OldKeys.IsValidIndex(NewIndex) && !Used[NewIndex])
-			{
-				Source[NewIndex] = NewIndex;
-				Used[NewIndex] = true;
-			}
-		}
+		const TArray<int32> Source = MapReplacedStops(OldStops, NewStops);
 		TArray<FFCCStopRule> Remapped;
-		Remapped.SetNum(NewKeys.Num());
-		for (int32 NewIndex = 0; NewIndex < NewKeys.Num(); ++NewIndex)
+		Remapped.SetNum(NewStops.Num());
+		for (int32 NewIndex = 0; NewIndex < NewStops.Num(); ++NewIndex)
 		{
 			if (Entry->Stops.IsValidIndex(Source[NewIndex]))
 			{
@@ -283,9 +324,11 @@ void AFCCRuleSubsystem::NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, con
 		if (Remapped != Entry->Stops)
 		{
 			Entry->Stops = MoveTemp(Remapped);
-			UE_LOG(LogFreightCarControl, Log, TEXT("%s: stops replaced (%d -> %d), rules realigned"), *DescribeTimeTable(TimeTable), OldStops.Num(), NewStops.Num());
 			RulesChanged(TEXT("stops replaced"));
 		}
+		UE_LOG(LogFreightCarControl, Log, TEXT("%s: stops replaced. Before: %s. After: %s. Rules taken from old stops: %s"),
+			*DescribeTimeTable(TimeTable), *DescribeStops(OldStops), *DescribeStops(NewStops),
+			*FString::JoinBy(Source, TEXT(" "), [](int32 Index) { return Index == INDEX_NONE ? FString(TEXT("-")) : FString::FromInt(Index + 1); }));
 	}
 	ProcessPendingRules();
 }
