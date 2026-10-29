@@ -25,7 +25,9 @@ Rules belong to the train, so other trains using the same stations aren't affect
 - **Freight car menu.** Open a freight car and click **Timetable rules** to see this car's mode at every stop of its
   train. Clicks save straight away.
 
-Cars are numbered from the train's first vehicle, counting freight cars only; fluid cars are marked.
+Car 1 is the freight car next to the locomotive, counting freight cars only; fluid cars are marked. With a
+locomotive at each end (push-pull), cars count from the front locomotive: the one in control when the train got its
+first car rule. Adding, removing or replacing freight cars keeps the numbering.
 
 ![The Timetable rules list in a freight car's menu](https://raw.githubusercontent.com/benvrakas/FreightCarControl/main/Docs/Images/freight-car-menu.png)
 
@@ -34,8 +36,8 @@ Cars are numbered from the train's first vehicle, counting freight cars only; fl
 - Vanilla train stations and freight and fluid platforms.
 - **[Modular Stations](https://ficsit.app/mod/ModularStations)**: freight, fluid and "ports below" platforms. Modular
   Stations isn't required.
-- **[DynamicTimeTable](https://ficsit.app/mod/DynamicTimeTable)**: rules stay with their stop when it sends the train to
-  another station of a group.
+- **[DynamicTimeTable](https://ficsit.app/mod/DynamicTimeTable)**: rules stay with their stop when it swaps a stop to
+  another station of a group, also while the timetable editor is open.
 - Reordering, adding and removing stops: rules follow their stops.
 - Multiplayer and dedicated servers (Windows and Linux).
 

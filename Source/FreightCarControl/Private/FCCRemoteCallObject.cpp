@@ -5,6 +5,7 @@
 #include "FGRailroadTimeTable.h"
 #include "FGTrain.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
 namespace
@@ -43,6 +44,13 @@ UFCCRemoteCallObject* UFCCRemoteCallObject::GetLocal(const UObject* WorldContext
 	return RCO;
 }
 
+FString UFCCRemoteCallObject::GetPlayerName() const
+{
+	const AFGPlayerController* Controller = GetOwnerPlayerController();
+	const APlayerState* State = Controller ? Controller->GetPlayerState<APlayerState>() : nullptr;
+	return State ? State->GetPlayerName() : GetNameSafe(Controller);
+}
+
 bool UFCCRemoteCallObject::Server_SetStopRule_Validate(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule)
 {
 	return IsRuleValid(Rule);
@@ -50,25 +58,24 @@ bool UFCCRemoteCallObject::Server_SetStopRule_Validate(AFGRailroadTimeTable* Tim
 
 void UFCCRemoteCallObject::Server_SetStopRule_Implementation(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule)
 {
-	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetStopRule from %s: %s stop %d [%s]"),
-		*GetNameSafe(GetOwnerPlayerController()), *GetNameSafe(TimeTable), StopIndex + 1, *Rule.ToCodes());
 	if (AFCCRuleSubsystem* Rules = AFCCRuleSubsystem::Get(GetOwnerPlayerController()))
 	{
-		Rules->SetStopRule(TimeTable, StopIndex, Rule);
+		Rules->SetStopRule(TimeTable, StopIndex, Rule, FString::Printf(TEXT("freight car menu (%s)"), *GetPlayerName()));
 	}
 }
 
-bool UFCCRemoteCallObject::Server_SetEditorRules_Validate(AFGTrain* Train, const TArray<FFCCStopRule>& Rules)
+bool UFCCRemoteCallObject::Server_SetEditorRules_Validate(AFGTrain* Train, int32 StopCount, const TArray<int32>& StopIndices, const TArray<FFCCStopRule>& Rules)
 {
-	return Rules.Num() <= MaxStops && !Rules.ContainsByPredicate([](const FFCCStopRule& Rule) { return !IsRuleValid(Rule); });
+	return StopCount >= 0 && StopCount <= MaxStops && StopIndices.Num() == Rules.Num() && Rules.Num() <= MaxStops
+		&& !Rules.ContainsByPredicate([](const FFCCStopRule& Rule) { return !IsRuleValid(Rule); });
 }
 
-void UFCCRemoteCallObject::Server_SetEditorRules_Implementation(AFGTrain* Train, const TArray<FFCCStopRule>& Rules)
+void UFCCRemoteCallObject::Server_SetEditorRules_Implementation(AFGTrain* Train, int32 StopCount, const TArray<int32>& StopIndices, const TArray<FFCCStopRule>& Rules)
 {
-	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetEditorRules from %s: %s, %d stops"),
-		*GetNameSafe(GetOwnerPlayerController()), Train ? *Train->GetTrainName().ToString() : TEXT("no train"), Rules.Num());
+	UE_LOG(LogFreightCarControl, Log, TEXT("Server_SetEditorRules from %s: %s, %d of %d stops edited"),
+		*GetPlayerName(), Train ? *Train->GetTrainName().ToString() : TEXT("no train"), Rules.Num(), StopCount);
 	if (AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(GetOwnerPlayerController()))
 	{
-		Subsystem->QueueEditorRules(Train, Rules);
+		Subsystem->QueueEditorRules(Train, StopCount, StopIndices, Rules, FString::Printf(TEXT("timetable editor (%s)"), *GetPlayerName()));
 	}
 }

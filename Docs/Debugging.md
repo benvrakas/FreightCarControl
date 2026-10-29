@@ -8,13 +8,20 @@ At the default level the mod logs:
 
 - startup: `Docking hooks installed`, `Time table hooks installed`, `UI hook ... added to ...`, `4 of 4 UI hooks
   registered`, `Rule subsystem started (server|client)`
-- every rule edit: `<train> stop <n>: cars [P-LU]`
+- every rule change: `<train> stop <n> (<station>): [before] -> [after] by <cause>`, where the cause is
+  `timetable editor (<player>)`, `freight car menu (<player>)` or `/fcc (<player>)`; whole-train changes, stop
+  insertions/removals and stop-list replacements log every stop's rules before and after
+- car numbering: `<train>: cars counted from locomotive <name>`, a warning if the front locomotive left the train,
+  `the game's vehicle order changed (reversed)`, `freight cars changed: [...] -> [...]`, and a warning
+  `freight car numbering reversed` (checked every 2 seconds for trains with rules)
+- at each save and load, every train's front locomotive and rules
 - every dock of a car on a train that has a timetable, once per car and stop:
   `<train> at <station> (stop <n>): car <c> -> Platform|Skip|Load|Unload, by <platform> (<class>, set to load|unload)`
 - Load/Unload overrides: `<platform> switched to load for <car> (own setting: unload)`, then `<platform> restored to unload`
 - UI: `Timetable editor session started ... (save hook: yes ...)`, `Stop settings panel shown`, `Freight car panel
-  shown`, `Timetable saved for ...: sending car rules`, and on the server `applying rules saved from the timetable editor`
-- stop list changes: `stop inserted`, `stop removed`, `stops replaced (a -> b), k stop rules kept`
+  shown`, `Timetable saved for ...: sending N edited stop rules of M stops` (each stop listed as its rule or
+  `unchanged`), and on the server `applying N stop rules edited in the timetable editor`
+- stop list changes: `stop inserted`, `stop removed`, `stops replaced. Before: ... After: ... Rules taken from old stops: ...`
 - save and load counts
 
 More detail (docks at a station that isn't the current stop, button clicks, replication) is at `Verbose`; per-update

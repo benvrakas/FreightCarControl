@@ -8,6 +8,7 @@
 #include "FGRailroadVehicle.h"
 #include "FGTrain.h"
 #include "FGTrainStationIdentifier.h"
+#include "GameFramework/PlayerState.h"
 
 namespace
 {
@@ -46,10 +47,13 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 		return EExecutionStatus::UNCOMPLETED;
 	}
 	const int32 CarCount = AFCCRuleSubsystem::GetFreightCars(Train).Num();
+	const AFGPlayerController* Player = Sender->GetPlayer();
+	const APlayerState* PlayerState = Player ? Player->GetPlayerState<APlayerState>() : nullptr;
+	const FString Cause = FString::Printf(TEXT("/fcc (%s)"), PlayerState ? *PlayerState->GetPlayerName() : TEXT("?"));
 
 	if (Arguments.Num() == 1 && Arguments[0].Equals(TEXT("clear"), ESearchCase::IgnoreCase))
 	{
-		Rules->SetAllStopRules(TimeTable, {});
+		Rules->SetAllStopRules(TimeTable, {}, Cause);
 	}
 	else if (Arguments.Num() == 3)
 	{
@@ -66,11 +70,11 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 		{
 			FFCCStopRule Rule;
 			Rule.Cars.Init(Mode.GetValue(), CarCount);
-			Rules->SetStopRule(TimeTable, Stop, Rule);
+			Rules->SetStopRule(TimeTable, Stop, Rule, Cause);
 		}
 		else
 		{
-			Rules->SetCarMode(TimeTable, Stop, Car, Mode.GetValue());
+			Rules->SetCarMode(TimeTable, Stop, Car, Mode.GetValue(), Cause);
 		}
 	}
 	else if (Arguments.Num() != 0)

@@ -133,7 +133,8 @@ void UFCCStopRulePanel::Poll()
 	}
 	else
 	{
-		mHint->SetText(LOCTEXT("StopPanelHint", "Click a car to change what it does here (right-click to go back). Platform: the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only."));
+		const FText Numbering = AFCCRuleSubsystem::DescribeCarNumbering(Train);
+		mHint->SetText(FText::Format(LOCTEXT("StopPanelHint", "Click a car to change what it does here (right-click to go back). Platform: the platform's own setting. Skip: leave the car alone. Load / Unload: switch the platform for this car only. {0}"), Numbering));
 	}
 	RebuildButtons(Train);
 	UE_LOG(LogFreightCarControl, Verbose, TEXT("Stop settings panel: %s, train %s, %d freight cars"), *GetNameSafe(StationWidget), *GetNameSafe(Train), CarCount);

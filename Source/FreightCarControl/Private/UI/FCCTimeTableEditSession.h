@@ -10,7 +10,7 @@ class AFGTrainStationIdentifier;
 
 // Invisible widget added to the vanilla timetable editor (BPW_Train_TimeTable_Setup). Collects the car rules the player
 // edits as a draft per train, keyed by (station, occurrence of that station in the list) because the editor recreates
-// its stop widgets; when the timetable is saved with a draft, sends the rules of every listed stop to the server.
+// its stop widgets; when the timetable is saved with a draft, sends the edited stops' rules and positions to the server.
 UCLASS()
 class UFCCTimeTableEditSession : public UUserWidget
 {
@@ -44,11 +44,12 @@ private:
 	// Returns the stop widgets of the editor's timetable list, in order.
 	TArray<UUserWidget*> GetStationWidgets() const;
 
-	// Returns StationWidget's key in the current list.
-	FStopKey GetKey(UUserWidget* StationWidget) const;
+	// Returns StationWidget's key in the current list, and its position there (INDEX_NONE if it isn't listed).
+	FStopKey GetKey(UUserWidget* StationWidget, int32* OutListIndex = nullptr) const;
 
-	// Returns the server's rule for the stop with Key, or an empty rule.
-	FFCCStopRule GetServerRule(const FStopKey& Key) const;
+	// Returns the server's rule for the listed stop with Key at ListIndex: the stop with that key, or the stop at the same
+	// position if another mod changed that stop's station since the editor opened; empty otherwise.
+	FFCCStopRule GetServerRule(const FStopKey& Key, int32 ListIndex) const;
 
 	// Returns the draft of the train being edited, or nullptr if there is none.
 	const FDraft* FindDraft() const;

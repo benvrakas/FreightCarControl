@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.3
+
+- **Cars are counted from the locomotive.** Car 1 is the freight car next to the locomotive, however the game happens
+  to store the train. With a locomotive at each end (push-pull), cars count from the front locomotive: the one in
+  control when the train got its first car rule. The stop settings say where car 1 is.
+- **Trains with rules from earlier versions keep their numbering**, now tied to their locomotive so it can't flip.
+- **Saving the timetable editor no longer resets stops you didn't edit** when DynamicTimeTable swapped their station
+  while the editor was open. Only the stops you changed are saved.
+- **More detailed log** (`LogFreightCarControl`): every rule change with what made it (and which player) and the rules
+  before and after, warnings when a train's freight cars change order, and a list of every train's rules at each save.
+
+**Good to know**
+
+- Everyone in a multiplayer session needs Freight Car Control 1.0.3.
+
 ## 1.0.2
 
 - **Rules no longer move to other stops when another mod changes a stop's station** (for example DynamicTimeTable).

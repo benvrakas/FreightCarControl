@@ -135,24 +135,33 @@ TArray<UUserWidget*> UFCCTimeTableEditSession::GetStationWidgets() const
 	return FCCWidgetUtils::FindNestedWidgetsByClassName(List ? List : Setup, FCCWidgetUtils::SetupStationClassName);
 }
 
-UFCCTimeTableEditSession::FStopKey UFCCTimeTableEditSession::GetKey(UUserWidget* StationWidget) const
+UFCCTimeTableEditSession::FStopKey UFCCTimeTableEditSession::GetKey(UUserWidget* StationWidget, int32* OutListIndex) const
 {
 	const AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(StationWidget);
+	const TArray<UUserWidget*> Widgets = GetStationWidgets();
 	int32 Occurrence = 0;
-	for (UUserWidget* Widget : GetStationWidgets())
+	for (int32 Index = 0; Index < Widgets.Num(); ++Index)
 	{
-		if (Widget == StationWidget)
+		if (Widgets[Index] == StationWidget)
 		{
+			if (OutListIndex)
+			{
+				*OutListIndex = Index;
+			}
 			return FStopKey(Station, Occurrence);
 		}
-		Occurrence += FCCWidgetUtils::GetSetupStationStation(Widget) == Station ? 1 : 0;
+		Occurrence += FCCWidgetUtils::GetSetupStationStation(Widgets[Index]) == Station ? 1 : 0;
+	}
+	if (OutListIndex)
+	{
+		*OutListIndex = INDEX_NONE;
 	}
 	UE_LOG(LogFreightCarControl, Verbose, TEXT("Timetable editor: %s isn't in the timetable list; using the first stop at %s"),
 		*GetNameSafe(StationWidget), *DescribeStation(Station));
 	return FStopKey(Station, 0);
 }
 
-FFCCStopRule UFCCTimeTableEditSession::GetServerRule(const FStopKey& Key) const
+FFCCStopRule UFCCTimeTableEditSession::GetServerRule(const FStopKey& Key, int32 ListIndex) const
 {
 	const AFGTrain* Train = GetTrain();
 	const AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
@@ -169,6 +178,10 @@ FFCCStopRule UFCCTimeTableEditSession::GetServerRule(const FStopKey& Key) const
 			return Subsystem->GetStopRule(TimeTable, StopIndex);
 		}
 	}
+	if (ListIndex != INDEX_NONE && GetStationWidgets().Num() == TimeTable->GetNumStops())
+	{
+		return Subsystem->GetStopRule(TimeTable, ListIndex);
+	}
 	return FFCCStopRule();
 }
 
@@ -179,10 +192,11 @@ const UFCCTimeTableEditSession::FDraft* UFCCTimeTableEditSession::FindDraft() co
 
 FFCCStopRule UFCCTimeTableEditSession::GetRule(UUserWidget* StationWidget) const
 {
-	const FStopKey Key = GetKey(StationWidget);
+	int32 ListIndex = INDEX_NONE;
+	const FStopKey Key = GetKey(StationWidget, &ListIndex);
 	const FDraft* Draft = FindDraft();
 	const FFCCStopRule* Edited = Draft ? Draft->Find(Key) : nullptr;
-	return Edited ? *Edited : GetServerRule(Key);
+	return Edited ? *Edited : GetServerRule(Key, ListIndex);
 }
 
 void UFCCTimeTableEditSession::SetRule(UUserWidget* StationWidget, const FFCCStopRule& Rule)
@@ -208,28 +222,41 @@ void UFCCTimeTableEditSession::HandleSave()
 		UE_LOG(LogFreightCarControl, Verbose, TEXT("Timetable saved for %s with no car rule edits"), *GetNameSafe(Train));
 		return;
 	}
+	const TArray<UUserWidget*> Widgets = GetStationWidgets();
+	TArray<int32> StopIndices;
 	TArray<FFCCStopRule> Rules;
 	TMap<const AFGTrainStationIdentifier*, int32> Occurrences;
 	FString Summary;
-	for (UUserWidget* Widget : GetStationWidgets())
+	for (int32 Index = 0; Index < Widgets.Num(); ++Index)
 	{
-		const AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(Widget);
+		const AFGTrainStationIdentifier* Station = FCCWidgetUtils::GetSetupStationStation(Widgets[Index]);
 		const FStopKey Key(Station, Occurrences.FindOrAdd(Station)++);
 		const FFCCStopRule* Edited = Draft.Find(Key);
-		const FFCCStopRule& Rule = Rules.Add_GetRef(Edited ? *Edited : GetServerRule(Key));
-		Summary += FString::Printf(TEXT(" [%s: %s]"), *DescribeStation(Station), *Rule.ToCodes());
+		Summary += FString::Printf(TEXT(" [%d. %s: %s]"), Index + 1, *DescribeStation(Station), Edited ? *Edited->ToCodes() : TEXT("unchanged"));
+		if (Edited)
+		{
+			StopIndices.Add(Index);
+			Rules.Add(*Edited);
+		}
 	}
-	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable saved for %s: sending car rules for %d stops:%s"), *Train->GetTrainName().ToString(), Rules.Num(), *Summary);
+	UE_LOG(LogFreightCarControl, Log, TEXT("Timetable saved for %s: sending %d edited stop rules of %d stops:%s"),
+		*Train->GetTrainName().ToString(), Rules.Num(), Widgets.Num(), *Summary);
+	if (Rules.Num() < Draft.Num())
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("Timetable editor: %d edited stops are no longer in %s's list and were dropped"),
+			Draft.Num() - Rules.Num(), *Train->GetTrainName().ToString());
+	}
 
 	// Sent a tick later so it reaches the server after the editor's own save on the same connection.
 	TWeakObjectPtr<AFGTrain> WeakTrain = Train;
 	TWeakObjectPtr<UWorld> WeakWorld = GetWorld();
-	auto Send = [WeakTrain, WeakWorld, Rules]()
+	const int32 StopCount = Widgets.Num();
+	auto Send = [WeakTrain, WeakWorld, StopCount, StopIndices, Rules]()
 	{
 		UFCCRemoteCallObject* RCO = UFCCRemoteCallObject::GetLocal(WeakWorld.Get());
 		if (RCO && WeakTrain.IsValid())
 		{
-			RCO->Server_SetEditorRules(WeakTrain.Get(), Rules);
+			RCO->Server_SetEditorRules(WeakTrain.Get(), StopCount, StopIndices, Rules);
 		}
 	};
 	if (UWorld* World = GetWorld())

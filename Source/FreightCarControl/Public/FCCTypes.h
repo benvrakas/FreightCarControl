@@ -4,6 +4,7 @@
 #include "FCCTypes.generated.h"
 
 class AFGBuildableTrainPlatformCargo;
+class AFGLocomotive;
 class AFGRailroadTimeTable;
 class AFGRailroadVehicle;
 class AFGTrain;
@@ -127,6 +128,23 @@ struct FREIGHTCARCONTROL_API FFCCTimeTableRules
 	UPROPERTY(SaveGame, BlueprintReadOnly)
 	TArray<FFCCStopRule> Stops;
 
+	// The train the time table belongs to, kept for names and car numbering.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	TObjectPtr<AFGTrain> Train = nullptr;
+
+	// The locomotive whose end of the train cars are counted from (car 1 is the freight car nearest it).
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	TObjectPtr<AFGLocomotive> FrontLocomotive = nullptr;
+
+	// Counts cars from the end of the train away from FrontLocomotive; set for rules made before car numbering was
+	// anchored to a locomotive, so they keep their numbering.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	bool bCountFromFarEnd = false;
+
+	// False for rules made before car numbering was anchored to a locomotive, until the server picks their front.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	bool bFrontChosen = false;
+
 	// Returns true if no stop has a car rule.
 	bool IsDefault() const
 	{
@@ -155,7 +173,7 @@ struct FREIGHTCARCONTROL_API FFCCPlatformOverride
 	bool bForcedLoadMode = false;
 };
 
-// Rules a client saved from the timetable editor, waiting until the train's timetable has as many stops.
+// Rules a client edited in the timetable editor, waiting until the train's timetable has the saved number of stops.
 USTRUCT()
 struct FREIGHTCARCONTROL_API FFCCPendingRules
 {
@@ -164,8 +182,17 @@ struct FREIGHTCARCONTROL_API FFCCPendingRules
 	UPROPERTY()
 	TObjectPtr<AFGTrain> Train = nullptr;
 
+	// Number of stops in the list the editor saved.
+	int32 StopCount = 0;
+
+	// Positions of the edited stops in that list, and their rules; other stops keep their rules.
+	TArray<int32> StopIndices;
+
 	UPROPERTY()
 	TArray<FFCCStopRule> Rules;
+
+	// Who saved, for the log.
+	FString Cause;
 
 	double ReceivedTime = 0.0;
 };

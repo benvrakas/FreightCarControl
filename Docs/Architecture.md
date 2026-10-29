@@ -11,6 +11,26 @@ For each stop in a train's timetable, each freight car is set to one of:
 Cars are identified by their position among the train's freight cars (locomotives aren't counted), so the rules don't
 depend on how the station is built.
 
+## Car numbering
+
+The game stores a train as a linked list from `AFGTrain::FirstVehicle`, and which end that is depends on how the train
+was assembled. Numbering is anchored to a locomotive instead (`AFCCRuleSubsystem::GetFreightCars`): each train's rules
+entry stores `FrontLocomotive`, and car 1 is the freight car nearest it.
+
+- A train without rules counts from its multiple-unit master if that is in the train, else from its first locomotive in
+  stored order. When it gets its first rule, that locomotive becomes its `FrontLocomotive`, so the numbering the UI
+  showed is the numbering saved. Later changes of the master (a player taking over the other cab of a push-pull train)
+  don't move it.
+- Rules from before 1.0.3 (`bFrontChosen` false) counted from the stored first vehicle. The 2-second sweep gives them
+  the first locomotive in stored order, with `bCountFromFarEnd` set if that locomotive sits in the later half, so the
+  numbering stays exactly as it was and is then tied to the locomotive. Until the sweep runs they keep stored order.
+- If the front locomotive leaves the train (dismantled, decoupled), a new one is chosen as for a new train and a warning
+  is logged, since the numbering may flip.
+- Freight cars can be added, removed or replaced without affecting numbering, which stays by position from the front.
+
+`FrontLocomotive` and the flags replicate with the rules, so clients number cars the same way.
+
+
 ## How the game docks a train (game CL 513885)
 
 Found by disassembling the shipped `FactoryGame` DLL with its PDB.
@@ -87,10 +107,13 @@ Every replacement is logged with the stations before and after and which old sto
 Stops are identified by position everywhere else. Clients edit through `UFCCRemoteCallObject`:
 
 - `Server_SetStopRule(timetable, stop, rule)`: one stop. Used by the freight car menu.
-- `Server_SetEditorRules(train, rules)`: one rule per stop of the list the timetable editor just saved, sent a tick
-  after the editor's own save so it arrives after it on the same connection. `QueueEditorRules` applies it once the
-  train's timetable has one stop per rule (a new train has no timetable until the vanilla save creates it, and may be
-  built stop by stop); every stop change and the 2-second sweep re-check it; it is dropped after 30 s.
+- `Server_SetEditorRules(train, stop count, edited positions, rules)`: the rules of the stops edited in the timetable
+  editor, by position in the list it just saved, sent a tick after the editor's own save so it arrives after it on the
+  same connection. Unedited stops aren't sent: they keep what the server realigned when the editor's `SetStops`
+  arrived, so a stop whose station DynamicTimeTable swapped while the editor was open keeps its rule. `QueueEditorRules`
+  applies the edits once the train's timetable has that many stops (a new train has no timetable until the vanilla save
+  creates it, and may be built stop by stop); every stop change and the 2-second sweep re-check it; it is dropped after
+  30 s.
 
 When a train docks somewhere other than the stop's station (manual docking, or DynamicTimeTable sending it to another
 station of the group), the docked stop's car rules still apply, as the game does with its own stop rules.
