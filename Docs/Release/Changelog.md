@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (not released yet)
 
+- **Works with SmartTrains.** SmartTrains can set a managed train's stops and car rules in one step (cars that don't
+  fit a job skip it). While it does, the car rules show as managed by SmartTrains in the timetable editor and the
+  freight car menu and can't be changed there, and `/fcc` refuses edits. When the train is no longer managed, the
+  rules you had before come back if the timetable still has as many stops.
 - **Open a train's locomotive menu from the map.** Train rows in the map tab's list have a timetable button that opens
   that train's locomotive menu (timetable, self-driving and car rules) without driving it.
 

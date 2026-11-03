@@ -145,10 +145,21 @@ struct FREIGHTCARCONTROL_API FFCCTimeTableRules
 	UPROPERTY(SaveGame, BlueprintReadOnly)
 	bool bFrontChosen = false;
 
-	// Returns true if no stop has a car rule.
+	// Another mod that owns these rules (e.g. "SmartTrains"); while set, players can't edit them.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	FString Owner;
+
+	// The player's rules from before Owner took over, and how many stops the timetable had then.
+	UPROPERTY(SaveGame)
+	TArray<FFCCStopRule> SavedStops;
+
+	UPROPERTY(SaveGame)
+	int32 SavedStopCount = 0;
+
+	// Returns true if no stop has a car rule and no other mod owns or saved rules.
 	bool IsDefault() const
 	{
-		return !Stops.ContainsByPredicate([](const FFCCStopRule& Stop) { return !Stop.IsDefault(); });
+		return Owner.IsEmpty() && SavedStops.Num() == 0 && !Stops.ContainsByPredicate([](const FFCCStopRule& Stop) { return !Stop.IsDefault(); });
 	}
 };
 

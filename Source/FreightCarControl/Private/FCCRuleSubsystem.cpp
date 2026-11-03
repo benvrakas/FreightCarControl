@@ -372,6 +372,10 @@ void AFCCRuleSubsystem::SetStopRule(AFGRailroadTimeTable* TimeTable, int32 StopI
 			HasAuthority(), *GetNameSafe(TimeTable), StopIndex, Rule.Cars.Num());
 		return;
 	}
+	if (RejectIfOwned(TimeTable, Cause))
+	{
+		return;
+	}
 	FFCCTimeTableRules& Entry = FindOrAddEntry(TimeTable);
 	if (Entry.Stops.Num() <= StopIndex)
 	{
@@ -393,6 +397,10 @@ void AFCCRuleSubsystem::SetAllStopRules(AFGRailroadTimeTable* TimeTable, const T
 		UE_LOG(LogFreightCarControl, Warning, TEXT("SetAllStopRules rejected: authority=%d timetable=%s"), HasAuthority(), *GetNameSafe(TimeTable));
 		return;
 	}
+	if (RejectIfOwned(TimeTable, Cause))
+	{
+		return;
+	}
 	FFCCTimeTableRules& Entry = FindOrAddEntry(TimeTable);
 	const FString Before = DescribeRules(Entry.Stops);
 	Entry.Stops = Rules;
@@ -406,9 +414,91 @@ void AFCCRuleSubsystem::SetAllStopRules(AFGRailroadTimeTable* TimeTable, const T
 	RulesChanged(TEXT("set all rules"));
 }
 
+bool AFCCRuleSubsystem::RejectIfOwned(const AFGRailroadTimeTable* TimeTable, const FString& Cause) const
+{
+	const FFCCTimeTableRules* Entry = FindEntry(TimeTable);
+	if (!Entry || Entry->Owner.IsEmpty())
+	{
+		return false;
+	}
+	UE_LOG(LogFreightCarControl, Warning, TEXT("%s: rules are managed by %s; edit by %s ignored"), *Describe(TimeTable), *Entry->Owner, *Cause);
+	return true;
+}
+
+FString AFCCRuleSubsystem::GetRulesOwner(const AFGRailroadTimeTable* TimeTable) const
+{
+	const FFCCTimeTableRules* Entry = FindEntry(TimeTable);
+	return Entry ? Entry->Owner : FString();
+}
+
+bool AFCCRuleSubsystem::ExternalSetStops(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& Stops, const TArray<int32>& SkipStops,
+	const TArray<AFGRailroadVehicle*>& SkipVehicles, const FString& RulesOwner)
+{
+	if (!HasAuthority() || !TimeTable || SkipStops.Num() != SkipVehicles.Num())
+	{
+		UE_LOG(LogFreightCarControl, Warning, TEXT("ExternalSetStops rejected: authority=%d timetable=%s skips=%d/%d"), HasAuthority(), *GetNameSafe(TimeTable),
+			SkipStops.Num(), SkipVehicles.Num());
+		return false;
+	}
+	FFCCTimeTableRules& Entry = FindOrAddEntry(TimeTable);
+	const FString OldOwner = Entry.Owner;
+	const bool bTaking = !RulesOwner.IsEmpty() && OldOwner.IsEmpty();
+	const bool bReleasing = RulesOwner.IsEmpty() && !OldOwner.IsEmpty();
+	if (bTaking)
+	{
+		Entry.SavedStops = Entry.Stops;
+		Entry.SavedStopCount = TimeTable->GetNumStops();
+	}
+	{
+		TGuardValue<bool> Guard(bExternalWrite, true);
+		TimeTable->SetStops(Stops);
+	}
+	// SetStops may have added entries and moved the array, so look the entry up again.
+	FFCCTimeTableRules& Current = FindOrAddEntry(TimeTable);
+	const FString Before = DescribeRules(Current.Stops);
+	TArray<FFCCStopRule> Rules;
+	Rules.SetNum(TimeTable->GetNumStops());
+	bool bRestored = false;
+	if (bReleasing && Current.SavedStopCount == TimeTable->GetNumStops())
+	{
+		for (int32 Index = 0; Index < Rules.Num() && Index < Current.SavedStops.Num(); ++Index)
+		{
+			Rules[Index] = Current.SavedStops[Index];
+		}
+		bRestored = true;
+	}
+	const TArray<AFGFreightWagon*> Cars = GetFreightCars(FindTrain(Current));
+	int32 Skipped = 0;
+	for (int32 Index = 0; Index < SkipStops.Num(); ++Index)
+	{
+		const int32 CarIndex = Cars.IndexOfByKey(SkipVehicles[Index]);
+		if (Rules.IsValidIndex(SkipStops[Index]) && CarIndex != INDEX_NONE && CarIndex <= MaxCarIndex)
+		{
+			Rules[SkipStops[Index]].SetCarMode(CarIndex, EFCCCarMode::Skip);
+			++Skipped;
+		}
+	}
+	for (FFCCStopRule& Rule : Rules)
+	{
+		Rule.Trim();
+	}
+	Current.Stops = MoveTemp(Rules);
+	Current.Owner = RulesOwner;
+	if (bReleasing)
+	{
+		Current.SavedStops.Reset();
+		Current.SavedStopCount = 0;
+	}
+	UE_LOG(LogFreightCarControl, Log, TEXT("%s: %d stops and rules set by %s (owner '%s' -> '%s'%s), %d of %d skips applied. Rules %s -> %s"),
+		*Describe(TimeTable), Stops.Num(), RulesOwner.IsEmpty() ? *OldOwner : *RulesOwner, *OldOwner, *RulesOwner, bRestored ? TEXT(", player's rules put back") : TEXT(""),
+		Skipped, SkipStops.Num(), *Before, *DescribeRules(Current.Stops));
+	RulesChanged(TEXT("external set stops"));
+	return true;
+}
+
 void AFCCRuleSubsystem::QueueEditorRules(AFGTrain* Train, int32 StopCount, const TArray<int32>& StopIndices, const TArray<FFCCStopRule>& Rules, const FString& Cause)
 {
-	if (!HasAuthority() || !Train || StopIndices.Num() != Rules.Num())
+	if (!HasAuthority() || !Train || StopIndices.Num() != Rules.Num() || RejectIfOwned(Train->GetTimeTable(), Cause))
 	{
 		return;
 	}
@@ -482,6 +572,10 @@ void AFCCRuleSubsystem::NotifyStopRemoved(AFGRailroadTimeTable* TimeTable, int32
 
 void AFCCRuleSubsystem::NotifyStopsReplaced(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& OldStops, const TArray<FTimeTableStop>& NewStops)
 {
+	if (bExternalWrite)
+	{
+		return;
+	}
 	FFCCTimeTableRules* Entry = FindEntry(TimeTable);
 	if (Entry)
 	{

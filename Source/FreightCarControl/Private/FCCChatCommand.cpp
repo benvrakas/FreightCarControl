@@ -51,6 +51,12 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 	const APlayerState* PlayerState = Player ? Player->GetPlayerState<APlayerState>() : nullptr;
 	const FString Cause = FString::Printf(TEXT("/fcc (%s)"), PlayerState ? *PlayerState->GetPlayerName() : TEXT("?"));
 
+	const FString RulesOwner = Rules->GetRulesOwner(TimeTable);
+	if (!RulesOwner.IsEmpty() && Arguments.Num() > 0)
+	{
+		Sender->SendChatMessage(FString::Printf(TEXT("%s manages this train's car rules; they can't be changed with /fcc."), *RulesOwner), FLinearColor::Red);
+		return EExecutionStatus::UNCOMPLETED;
+	}
 	if (Arguments.Num() == 1 && Arguments[0].Equals(TEXT("clear"), ESearchCase::IgnoreCase))
 	{
 		Rules->SetAllStopRules(TimeTable, {}, Cause);

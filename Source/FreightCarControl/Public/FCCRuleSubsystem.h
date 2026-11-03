@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "FCCTypes.h"
+#include "FGRailroadTimeTable.h"
 #include "FGSaveInterface.h"
 #include "Subsystem/ModSubsystem.h"
 #include "FCCRuleSubsystem.generated.h"
@@ -62,6 +63,18 @@ public:
 
 	// Server only. Puts Platform's own setting back if the mod switched it for a vehicle other than KeepForVehicle.
 	void EndPlatformOverride(AFGBuildableTrainPlatformCargo* Platform, const AFGRailroadVehicle* KeepForVehicle = nullptr);
+
+	// Server only. For other mods (SmartTrains): replaces TimeTable's stops and its car rules in one step. The car
+	// SkipVehicles[i] skips the stop at SkipStops[i]; every other car follows the platform. A non-empty RulesOwner locks
+	// the rules against edits by players and keeps their earlier rules; an empty one unlocks them and puts the earlier
+	// rules back if the new stops are as many as the timetable had then. Returns false if nothing was written.
+	UFUNCTION(BlueprintCallable, Category = "FreightCarControl")
+	bool ExternalSetStops(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& Stops, const TArray<int32>& SkipStops,
+		const TArray<AFGRailroadVehicle*>& SkipVehicles, const FString& RulesOwner);
+
+	// Returns the mod that owns TimeTable's rules, or an empty string. Works on clients.
+	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
+	FString GetRulesOwner(const AFGRailroadTimeTable* TimeTable) const;
 
 	// Returns Train's freight cars numbered as rules number them: from the end of its front locomotive.
 	static TArray<AFGFreightWagon*> GetFreightCars(const AFGTrain* Train);
@@ -140,6 +153,12 @@ private:
 		TArray<TWeakObjectPtr<AFGFreightWagon>> Cars;
 	};
 	TMap<TWeakObjectPtr<AFGTrain>, FSeenOrder> mSeenOrders;
+
+	// Returns true, logging the refused edit, if another mod owns TimeTable's rules.
+	bool RejectIfOwned(const AFGRailroadTimeTable* TimeTable, const FString& Cause) const;
+
+	// Set while ExternalSetStops replaces stops, so the stop hook doesn't remap rules it is about to replace.
+	bool bExternalWrite = false;
 
 	uint32 mRevision = 0;
 	FTimerHandle mSweepTimer;

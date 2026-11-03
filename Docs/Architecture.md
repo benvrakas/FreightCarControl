@@ -176,3 +176,21 @@ Clients can't walk a train's vehicles the server's way: `AFGTrain::FirstVehicle`
 `AFGTrain::RebuildConsist_Server` fills by walking from `FirstVehicle`, so it has the same order. That class isn't
 exported from the game DLL, so `AFCCRuleSubsystem::GetFreightCars` reads `AFGTrain::mTrainReplicationActor` and its
 `mVehicles` through reflection when `GetFirstVehicle()` is null.
+
+
+## API for other mods (1.1.0)
+
+`AFCCRuleSubsystem::ExternalSetStops(TimeTable, Stops, SkipStops, SkipVehicles, Owner)` is `BlueprintCallable`, so other
+mods can call it by reflection without linking against Freight Car Control (SmartTrains does). It calls `SetStops`
+with the stop hook's remapping turned off (`bExternalWrite`), then writes rules for the new stops: car
+`SkipVehicles[i]` is set to Skip at stop `SkipStops[i]`, all other cars to Platform. Cars are numbered as usual,
+through `GetFreightCars`.
+
+`Owner` (saved and replicated in `FFCCTimeTableRules::Owner`) locks the rules:
+
+- `SetStopRule`, `SetAllStopRules` and `QueueEditorRules` refuse edits while it is set (`RejectIfOwned`, logged).
+- The timetable tab and freight car menu buttons are disabled, and `/fcc` refuses edits.
+- When an owner first takes a timetable, the player's rules and stop count are saved in `SavedStops` /
+  `SavedStopCount`. Releasing it (empty Owner) puts them back if the new stop count matches.
+
+`GetRulesOwner(TimeTable)` returns the owner, on clients too.

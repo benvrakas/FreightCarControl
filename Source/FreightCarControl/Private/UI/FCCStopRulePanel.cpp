@@ -110,10 +110,13 @@ void UFCCStopRulePanel::Poll()
 	const UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
 	AFGTrain* Train = Session && StationWidget ? Session->GetTrain() : nullptr;
 	const int32 CarCount = AFCCRuleSubsystem::GetFreightCars(Train).Num();
-	if (StationWidget == mStationWidget.Get() && Train == mTrain.Get() && CarCount == mCarCount)
+	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
+	const FString Owner = Subsystem && Train ? Subsystem->GetRulesOwner(Train->GetTimeTable()) : FString();
+	if (StationWidget == mStationWidget.Get() && Train == mTrain.Get() && CarCount == mCarCount && Owner == mOwner)
 	{
 		return;
 	}
+	mOwner = Owner;
 	if (StationWidget != mStationWidget.Get() && Train)
 	{
 		mRule = Session->GetRule(StationWidget);
@@ -130,6 +133,10 @@ void UFCCStopRulePanel::Poll()
 	else if (CarCount == 0)
 	{
 		mHint->SetText(LOCTEXT("StopPanelNoCars", "This train has no freight cars."));
+	}
+	else if (!Owner.IsEmpty())
+	{
+		mHint->SetText(FText::Format(LOCTEXT("StopPanelOwned", "{0} manages this train and sets its cars for every job, so they can't be changed here."), FText::FromString(Owner)));
 	}
 	else
 	{
@@ -157,6 +164,7 @@ void UFCCStopRulePanel::RebuildButtons(const AFGTrain* Train)
 		Button->SetLabel(FText::Format(bFluid ? LOCTEXT("FluidCarLabel", "Car {0} (fluid)") : LOCTEXT("CarLabel", "Car {0}"), CarIndex + 1));
 		Button->SetMode(mRule.GetCarMode(CarIndex));
 		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked, EFCCCarMode Mode) { OnCarClicked(Clicked, Mode); };
+		Button->SetIsEnabled(mOwner.IsEmpty());
 		mCars->AddChildToWrapBox(Button);
 	}
 }
@@ -164,7 +172,7 @@ void UFCCStopRulePanel::RebuildButtons(const AFGTrain* Train)
 void UFCCStopRulePanel::OnCarClicked(UFCCCarModeButton* Button, EFCCCarMode Mode)
 {
 	UFCCTimeTableEditSession* Session = UFCCTimeTableEditSession::GetActive();
-	if (!Button || !Session || !mStationWidget.IsValid())
+	if (!Button || !Session || !mStationWidget.IsValid() || !mOwner.IsEmpty())
 	{
 		return;
 	}

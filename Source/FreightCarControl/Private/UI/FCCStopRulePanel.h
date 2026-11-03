@@ -48,6 +48,8 @@ private:
 	TWeakObjectPtr<UUserWidget> mStationWidget;
 	TWeakObjectPtr<AFGTrain> mTrain;
 	int32 mCarCount = INDEX_NONE;
+	// Mod that owns the shown train's rules (buttons are read-only while set).
+	FString mOwner;
 
 	FFCCStopRule mRule;
 	FFCCStopRule mRuleWhenOpened;

@@ -240,6 +240,7 @@ void UFCCWagonRulePanel::RebuildRows()
 	{
 		return;
 	}
+	const bool bOwned = !Subsystem->GetRulesOwner(TimeTable).IsEmpty();
 	for (int32 StopIndex = 0; StopIndex < TimeTable->GetNumStops(); ++StopIndex)
 	{
 		UFCCCarModeButton* Button = CreateWidget<UFCCCarModeButton>(this, UFCCCarModeButton::StaticClass());
@@ -253,6 +254,7 @@ void UFCCWagonRulePanel::RebuildRows()
 		Button->SetLabel(FText::Format(LOCTEXT("StopLabel", "{0}. {1}"), StopIndex + 1, Station ? Station->GetStationName() : LOCTEXT("UnknownStation", "?")));
 		Button->SetMode(Subsystem->GetCarMode(TimeTable, StopIndex, mShownCarIndex));
 		Button->OnClickedHandler = [this](UFCCCarModeButton* Clicked, EFCCCarMode Mode) { OnStopClicked(Clicked, Mode); };
+		Button->SetIsEnabled(!bOwned);
 		if (UScrollBoxSlot* RowSlot = Cast<UScrollBoxSlot>(mRows->AddChild(Button)))
 		{
 			RowSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
@@ -267,7 +269,7 @@ void UFCCWagonRulePanel::OnStopClicked(UFCCCarModeButton* Button, EFCCCarMode Mo
 	AFGRailroadTimeTable* TimeTable = Train ? Train->GetTimeTable() : nullptr;
 	const AFCCRuleSubsystem* Subsystem = AFCCRuleSubsystem::Get(this);
 	UFCCRemoteCallObject* RCO = UFCCRemoteCallObject::GetLocal(this);
-	if (!Button || !TimeTable || !Subsystem || !RCO || mShownCarIndex == INDEX_NONE)
+	if (!Button || !TimeTable || !Subsystem || !RCO || mShownCarIndex == INDEX_NONE || !Subsystem->GetRulesOwner(TimeTable).IsEmpty())
 	{
 		return;
 	}
