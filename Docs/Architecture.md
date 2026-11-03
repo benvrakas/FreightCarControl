@@ -194,3 +194,10 @@ through `GetFreightCars`.
   `SavedStopCount`. Releasing it (empty Owner) puts them back if the new stop count matches.
 
 `GetRulesOwner(TimeTable)` returns the owner, on clients too.
+
+The lock is saved, so a train stays locked if its owner mod is uninstalled. `/fcc unlock` (`ReleaseRules`) releases it
+without touching the stops: the saved rules come back if the stop count still matches, otherwise the rules are
+cleared, since they were the owner's job rules.
+
+Also reflection-callable: `SetAllStopRules` (`BlueprintCallable`; refused while owned), and the `BlueprintPure` statics
+`GetFreightCars`, `GetFreightCarIndex` and `GetLeadLocomotive`, so another mod numbers cars exactly as FCC does.

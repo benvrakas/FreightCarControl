@@ -136,7 +136,7 @@ void UFCCStopRulePanel::Poll()
 	}
 	else if (!Owner.IsEmpty())
 	{
-		mHint->SetText(FText::Format(LOCTEXT("StopPanelOwned", "{0} manages this train and sets its cars for every job, so they can't be changed here."), FText::FromString(Owner)));
+		mHint->SetText(FText::Format(LOCTEXT("StopPanelOwned", "{0} manages this train and sets its cars for every job, so they can't be changed here. If {0} is no longer installed, drive the train and type /fcc unlock in chat."), FText::FromString(Owner)));
 	}
 	else
 	{

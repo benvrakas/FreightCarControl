@@ -42,6 +42,8 @@ Drive the train (sit in its locomotive), then in chat:
 - `/fcc <stop> <car> platform|skip|load|unload`: sets one car at one stop (both count from 1)
 - `/fcc <stop> all platform|skip|load|unload`: sets every car at one stop
 - `/fcc clear`: removes all rules from the train
+- `/fcc unlock`: releases rules another mod (SmartTrains) manages, for when that mod is gone; your earlier rules come
+  back if the timetable has as many stops as before
 
 Codes: `P` platform setting, `-` skip, `L` load, `U` unload.
 

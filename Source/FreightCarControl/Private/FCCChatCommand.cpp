@@ -32,7 +32,7 @@ AFCCChatCommand::AFCCChatCommand()
 	Aliases.Add(TEXT("freightcars"));
 	MinNumberOfArguments = 0;
 	bOnlyUsableByPlayer = true;
-	Usage = NSLOCTEXT("FreightCarControl", "ChatUsage", "/fcc  |  /fcc <stop> <car|all> platform|skip|load|unload  |  /fcc clear   (drive the train first; stops and cars count from 1)");
+	Usage = NSLOCTEXT("FreightCarControl", "ChatUsage", "/fcc  |  /fcc <stop> <car|all> platform|skip|load|unload  |  /fcc clear  |  /fcc unlock   (drive the train first; stops and cars count from 1)");
 }
 
 EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* Sender, const TArray<FString>& Arguments, const FString& Label)
@@ -52,12 +52,21 @@ EExecutionStatus AFCCChatCommand::ExecuteCommand_Implementation(UCommandSender* 
 	const FString Cause = FString::Printf(TEXT("/fcc (%s)"), PlayerState ? *PlayerState->GetPlayerName() : TEXT("?"));
 
 	const FString RulesOwner = Rules->GetRulesOwner(TimeTable);
-	if (!RulesOwner.IsEmpty() && Arguments.Num() > 0)
+	if (Arguments.Num() == 1 && Arguments[0].Equals(TEXT("unlock"), ESearchCase::IgnoreCase))
 	{
-		Sender->SendChatMessage(FString::Printf(TEXT("%s manages this train's car rules; they can't be changed with /fcc."), *RulesOwner), FLinearColor::Red);
+		if (!Rules->ReleaseRules(TimeTable, Cause))
+		{
+			Sender->SendChatMessage(TEXT("No other mod manages this train's car rules."));
+			return EExecutionStatus::UNCOMPLETED;
+		}
+		Sender->SendChatMessage(FString::Printf(TEXT("Car rules released from %s. If it is still installed it may take the train back on its next job."), *RulesOwner));
+	}
+	else if (!RulesOwner.IsEmpty() && Arguments.Num() > 0)
+	{
+		Sender->SendChatMessage(FString::Printf(TEXT("%s manages this train's car rules; they can't be changed with /fcc (/fcc unlock releases them)."), *RulesOwner), FLinearColor::Red);
 		return EExecutionStatus::UNCOMPLETED;
 	}
-	if (Arguments.Num() == 1 && Arguments[0].Equals(TEXT("clear"), ESearchCase::IgnoreCase))
+	else if (Arguments.Num() == 1 && Arguments[0].Equals(TEXT("clear"), ESearchCase::IgnoreCase))
 	{
 		Rules->SetAllStopRules(TimeTable, {}, Cause);
 	}

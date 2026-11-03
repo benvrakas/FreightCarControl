@@ -496,6 +496,26 @@ bool AFCCRuleSubsystem::ExternalSetStops(AFGRailroadTimeTable* TimeTable, const 
 	return true;
 }
 
+bool AFCCRuleSubsystem::ReleaseRules(AFGRailroadTimeTable* TimeTable, const FString& Cause)
+{
+	FFCCTimeTableRules* Entry = HasAuthority() ? FindEntry(TimeTable) : nullptr;
+	if (!Entry || Entry->Owner.IsEmpty())
+	{
+		return false;
+	}
+	const FString OldOwner = Entry->Owner;
+	const FString Before = DescribeRules(Entry->Stops);
+	const bool bRestored = Entry->SavedStopCount == TimeTable->GetNumStops();
+	Entry->Stops = bRestored ? Entry->SavedStops : TArray<FFCCStopRule>();
+	Entry->Owner.Reset();
+	Entry->SavedStops.Reset();
+	Entry->SavedStopCount = 0;
+	UE_LOG(LogFreightCarControl, Log, TEXT("%s: rules released from %s by %s (%s). Rules %s -> %s"), *Describe(TimeTable), *OldOwner, *Cause,
+		bRestored ? TEXT("player's rules put back") : TEXT("stop count changed, rules cleared"), *Before, *DescribeRules(Entry->Stops));
+	RulesChanged(TEXT("rules released"));
+	return true;
+}
+
 void AFCCRuleSubsystem::QueueEditorRules(AFGTrain* Train, int32 StopCount, const TArray<int32>& StopIndices, const TArray<FFCCStopRule>& Rules, const FString& Cause)
 {
 	if (!HasAuthority() || !Train || StopIndices.Num() != Rules.Num() || RejectIfOwned(Train->GetTimeTable(), Cause))

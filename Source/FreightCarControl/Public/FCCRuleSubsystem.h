@@ -43,6 +43,7 @@ public:
 	void SetStopRule(AFGRailroadTimeTable* TimeTable, int32 StopIndex, const FFCCStopRule& Rule, const FString& Cause);
 
 	// Server only. Replaces all stop rules of TimeTable.
+	UFUNCTION(BlueprintCallable, Category = "FreightCarControl")
 	void SetAllStopRules(AFGRailroadTimeTable* TimeTable, const TArray<FFCCStopRule>& Rules, const FString& Cause);
 
 	// Server only. Applies rules edited in the timetable editor to the stops at StopIndices, once Train's timetable has
@@ -72,20 +73,28 @@ public:
 	bool ExternalSetStops(AFGRailroadTimeTable* TimeTable, const TArray<FTimeTableStop>& Stops, const TArray<int32>& SkipStops,
 		const TArray<AFGRailroadVehicle*>& SkipVehicles, const FString& RulesOwner);
 
+	// Server only. Releases TimeTable's rules from the mod that owns them without changing its stops: the player's
+	// earlier rules come back if the timetable has as many stops as it had then, otherwise its rules are cleared. For
+	// players whose managing mod is gone. Returns false if no mod owned them.
+	bool ReleaseRules(AFGRailroadTimeTable* TimeTable, const FString& Cause);
+
 	// Returns the mod that owns TimeTable's rules, or an empty string. Works on clients.
 	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
 	FString GetRulesOwner(const AFGRailroadTimeTable* TimeTable) const;
 
 	// Returns Train's freight cars numbered as rules number them: from the end of its front locomotive.
+	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
 	static TArray<AFGFreightWagon*> GetFreightCars(const AFGTrain* Train);
 
 	// Returns the position of Vehicle among the freight cars of its train, or INDEX_NONE if it isn't a freight car.
+	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
 	static int32 GetFreightCarIndex(const AFGRailroadVehicle* Vehicle);
 
 	// Returns a sentence for the UI saying where car 1 is on Train, or empty text if the train has no locomotive.
 	static FText DescribeCarNumbering(const AFGTrain* Train);
 
 	// Returns Train's locomotive in control, or else its first locomotive; nullptr if it has none. Works on clients.
+	UFUNCTION(BlueprintPure, Category = "FreightCarControl")
 	static AFGLocomotive* GetLeadLocomotive(const AFGTrain* Train);
 
 	//~ Begin AActor
