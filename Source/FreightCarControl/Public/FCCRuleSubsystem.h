@@ -72,6 +72,9 @@ public:
 	// Returns a sentence for the UI saying where car 1 is on Train, or empty text if the train has no locomotive.
 	static FText DescribeCarNumbering(const AFGTrain* Train);
 
+	// Returns Train's locomotive in control, or else its first locomotive; nullptr if it has none. Works on clients.
+	static AFGLocomotive* GetLeadLocomotive(const AFGTrain* Train);
+
 	//~ Begin AActor
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;

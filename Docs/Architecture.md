@@ -149,6 +149,15 @@ Hooks (vanilla widget → panel → mod widget):
   fluid layout a 611×486 canvas without an override. Closed: 60 px taller. Open: also 280 px wider and tall enough for
   the list. The Take All / Store All buttons are anchored right and move with the edge. The game reuses menu widgets,
   so the panel puts the vanilla sizes back when it closes.
+- `BPW_MapFilterButton` (a row of the map tab's list) → `Overlay_0`, right-aligned → `UFCCMapTrainButton`, an icon
+  button shown only when the row's `mActorRepresentation` is a train (the representation is set after the row is
+  built, so it re-checks each tick for a few ticks). A click finds the train (the representation's real actor, or on
+  clients the train whose representation it is), takes its lead locomotive, pops the outermost interact widget the row
+  is in (the big menu) and a tick later calls `UFGGameUI::OnToggleInteractWidget` with the locomotive's
+  `mLocomotiveMenuWidgetClass` and the locomotive: the same call the game makes when a driver opens the menu. The
+  menu's edits go through the player's `BP_RemoteCallObject` (`Server_SetTimeTableStops`,
+  `Server_SetTrainSelfDrivingEnabled`, ...), not the possessed pawn, so they work without driving, also on clients;
+  the train station's menu embeds the same widget the same way (`SetIsOpenedThroughStation`).
 
 `FindNestedWidgetsByClassName` removes duplicates: content of a named slot is reached both from the owner's widget
 tree and from the slot widget's own tree.

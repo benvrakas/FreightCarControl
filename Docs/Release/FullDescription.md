@@ -24,6 +24,8 @@ Rules belong to the train, so other trains using the same stations aren't affect
   Load → Unload, and a right-click goes back. Save the stop, then save the timetable.
 - **Freight car menu.** Open a freight car and click **Timetable rules** to see this car's mode at every stop of its
   train. Clicks save straight away.
+- **From the map.** Train rows in the map's list get a timetable button that opens that train's locomotive menu
+  without driving it, so you can edit its timetable and car rules from anywhere.
 
 Car 1 is the freight car next to the locomotive, counting freight cars only; fluid cars are marked. With a
 locomotive at each end (push-pull), cars count from the front locomotive: the one in control when the train got its

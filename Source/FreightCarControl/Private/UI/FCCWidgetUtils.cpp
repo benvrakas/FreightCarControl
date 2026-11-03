@@ -16,6 +16,8 @@ namespace FCCWidgetUtils
 	const TCHAR* TimeTableSetupClass = TEXT("/Game/FactoryGame/Buildable/Vehicle/Train/Locomotive/UI/TimeTable/BPW_Train_TimeTable_Setup.BPW_Train_TimeTable_Setup_C");
 	const TCHAR* SetupStationClassName = TEXT("BPW_Train_TimeTable_SetupStation_C");
 	const TCHAR* FreightWagonWidgetClass = TEXT("/Game/FactoryGame/Buildable/Vehicle/Train/Wagon/Widget_FreightWagon.Widget_FreightWagon_C");
+	const TCHAR* MapFilterButtonClass = TEXT("/Game/FactoryGame/Interface/UI/Minimap/MapFilters/BPW_MapFilterButton.BPW_MapFilterButton_C");
+	const TCHAR* LocomotiveMenuClass = TEXT("/Game/FactoryGame/Buildable/Vehicle/Train/Locomotive/UI/Widget_Locomotive_Menu.Widget_Locomotive_Menu_C");
 }
 
 UClass* FCCWidgetUtils::LoadWidgetClass(const TCHAR* Path)

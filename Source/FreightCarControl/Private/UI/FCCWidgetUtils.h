@@ -19,6 +19,8 @@ namespace FCCWidgetUtils
 	extern const TCHAR* TimeTableSetupClass;
 	extern const TCHAR* SetupStationClassName;
 	extern const TCHAR* FreightWagonWidgetClass;
+	extern const TCHAR* MapFilterButtonClass;
+	extern const TCHAR* LocomotiveMenuClass;
 
 	// Loads a widget class by path; logs and returns nullptr if it's missing.
 	UClass* LoadWidgetClass(const TCHAR* Path);

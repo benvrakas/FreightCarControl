@@ -1,5 +1,6 @@
 #include "UI/FCCUIHooks.h"
 #include "FreightCarControl.h"
+#include "UI/FCCMapTrainButton.h"
 #include "UI/FCCStopRulePanel.h"
 #include "UI/FCCTimeTableEditSession.h"
 #include "UI/FCCWagonRulePanel.h"
@@ -47,6 +48,16 @@ namespace
 		return Slot;
 	}
 
+	// Returns an overlay slot setup that centres a widget vertically against the right edge, Margin from it.
+	UWidgetBlueprintHookSlot_Generic* MakeRightOverlaySlot(UObject* Outer, float Margin)
+	{
+		UWidgetBlueprintHookSlot_Generic* Slot = NewObject<UWidgetBlueprintHookSlot_Generic>(Outer);
+		Slot->HorizontalAlignment = HAlign_Right;
+		Slot->VerticalAlignment = VAlign_Center;
+		Slot->Padding = FMargin(0.f, 0.f, Margin, 0.f);
+		return Slot;
+	}
+
 	// Returns a canvas slot setup for an invisible zero-size widget.
 	UWidgetBlueprintHookSlot_Canvas* MakeHiddenCanvasSlot(UObject* Outer)
 	{
@@ -87,6 +98,8 @@ void FCCUIHooks::Register(UObject* Outer, TArray<UWidgetBlueprintHookData*>& Out
 		UFCCWagonRulePanel::StaticClass(), TEXT("FCC_WagonRulePanel")));
 	Keep(AddHook(Outer, Manager, FCCWidgetUtils::FreightWagonWidgetClass, TEXT("CanvasPanel_0"),
 		UFCCWagonRulePanel::StaticClass(), TEXT("FCC_WagonRulePanelFluid"), MakeBottomCanvasSlot(Outer, 24.f)));
-	UE_LOG(LogFreightCarControl, Log, TEXT("%d of 4 UI hooks registered"), OutHooks.Num());
+	Keep(AddHook(Outer, Manager, FCCWidgetUtils::MapFilterButtonClass, TEXT("Overlay_0"),
+		UFCCMapTrainButton::StaticClass(), TEXT("FCC_MapTrainButton"), MakeRightOverlaySlot(Outer, 8.f)));
+	UE_LOG(LogFreightCarControl, Log, TEXT("%d of 5 UI hooks registered"), OutHooks.Num());
 #endif
 }

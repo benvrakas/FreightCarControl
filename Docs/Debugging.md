@@ -21,6 +21,8 @@ At the default level the mod logs:
 - UI: `Timetable editor session started ... (save hook: yes ...)`, `Stop settings panel shown`, `Freight car panel
   shown`, `Timetable saved for ...: sending N edited stop rules of M stops` (each stop listed as its rule or
   `unchanged`), and on the server `applying N stop rules edited in the timetable editor`
+- map: `Map: opening the locomotive menu of <train> (<locomotive>) with <menu class>; closed <big menu>`, or why it
+  couldn't
 - stop list changes: `stop inserted`, `stop removed`, `stops replaced. Before: ... After: ... Rules taken from old stops: ...`
 - save and load counts
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Open a train's locomotive menu from the map.** Train rows in the map tab's list have a timetable button that opens
+  that train's locomotive menu (timetable, self-driving and car rules) without driving it.
+
 ## 1.0.3
 
 - **Cars are counted from the locomotive.** Car 1 is the freight car next to the locomotive, however the game happens

@@ -687,6 +687,11 @@ FText AFCCRuleSubsystem::DescribeCarNumbering(const AFGTrain* Train)
 		: NSLOCTEXT("FreightCarControl", "NumberingLocomotive", "Car 1 is the freight car next to the locomotive.");
 }
 
+AFGLocomotive* AFCCRuleSubsystem::GetLeadLocomotive(const AFGTrain* Train)
+{
+	return FindDefaultFront(Train, GetStoredVehicles(Train));
+}
+
 int32 AFCCRuleSubsystem::GetFreightCarIndex(const AFGRailroadVehicle* Vehicle)
 {
 	return Vehicle ? GetFreightCars(Vehicle->GetTrain()).IndexOfByKey(Vehicle) : INDEX_NONE;
