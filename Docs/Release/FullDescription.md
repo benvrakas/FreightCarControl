@@ -15,6 +15,10 @@ Freight Car Control adds a rule per car, per timetable stop:
 
 Rules belong to the train, so other trains using the same stations aren't affected.
 
+**Goes well with:** [SmartTrains](https://ficsit.app/mod/SmartTrains), which plans trips car by car and uses
+Freight Car Control to skip cars at stops where they have no work, and [Auto Trains](https://ficsit.app/mod/AutoTrains),
+which drives self-driving trains without signals. More under Works with below.
+
 ![Freight car rules in a timetable stop's settings](https://raw.githubusercontent.com/benvrakas/FreightCarControl/main/Docs/Images/stop-settings.png)
 
 ### Where to set rules
@@ -36,6 +40,12 @@ first car rule. Adding, removing or replacing freight cars keeps the numbering.
 ### Works with
 
 - Vanilla train stations and freight and fluid platforms.
+- **[SmartTrains](https://ficsit.app/mod/SmartTrains)** (beta) sends trains where items are needed without fixed
+  timetables, and plans which car loads what where. With Freight Car Control it can stop a train at a station
+  where only some of its cars have work: the other cars skip that stop, so cargo for later stops stays on board.
+  Without it, far fewer of its trips work.
+- **[Auto Trains](https://ficsit.app/mod/AutoTrains)** drives self-driving trains without block or path signals.
+  Car rules work as usual.
 - **[Modular Stations](https://ficsit.app/mod/ModularStations)**: freight, fluid and "ports below" platforms. Modular
   Stations isn't required.
 - **[DynamicTimeTable](https://ficsit.app/mod/DynamicTimeTable)**: rules stay with their stop when it swaps a stop to
